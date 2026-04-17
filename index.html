@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minimal Noise</title>
     <style>
-        /* 背景色を白に変更 */
+        /* 背景色は白 */
         body { 
             display: flex; 
             justify-content: center; 
@@ -15,25 +15,29 @@
             margin: 0; 
         }
 
-        /* 文字なしの正円ボタン */
+        /* 文字なしの正円ボタン（初期状態は黒） */
         button { 
             width: 80px; 
             height: 80px; 
             border-radius: 50%; 
-            border: 2px solid #eeeeee; 
-            background: #ffffff; /* 初期状態は白 */
+            border: none; 
+            background: #000000; /* オフの時は黒 */
             cursor: pointer; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
-            transition: all 0.4s ease; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
             outline: none;
         }
 
         /* オン（再生中）の時のスタイル */
         button.active {
-            background: #e74c3c; /* 赤色 */
-            border-color: #e74c3c;
-            box-shadow: 0 0 20px rgba(231, 76, 60, 0.4);
-            transform: scale(0.9); /* 少し凹んだような演出 */
+            background: #e74c3c; /* オンになると赤 */
+            box-shadow: 0 0 25px rgba(231, 76, 60, 0.5);
+            transform: scale(0.85); /* 押している間少し小さく */
+        }
+
+        /* タップ時の視覚効果（スマホ用） */
+        button:active {
+            opacity: 0.8;
         }
     </style>
 </head>
@@ -55,7 +59,7 @@
                 // 停止
                 scriptNode.disconnect();
                 scriptNode = null;
-                btn.classList.remove('active'); // 赤から白へ
+                btn.classList.remove('active'); 
             } else {
                 // 再生
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
@@ -70,7 +74,7 @@
                     }
                 };
                 scriptNode.connect(audioCtx.destination);
-                btn.classList.add('active'); // 白から赤へ
+                btn.classList.add('active'); 
             }
         });
     </script>
