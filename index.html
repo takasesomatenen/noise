@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>White Noise Gen</title>
+    <style>
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #121212; color: white; font-family: sans-serif; }
+        button { padding: 20px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #333; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+    </style>
+</head>
+<body>
+    <button id="btn">Noise Start</button>
+
+    <script>
+        let audioCtx;
+        const btn = document.getElementById('btn');
+
+        btn.addEventListener('click', () => {
+            if (!audioCtx) {
+                // AudioContextの初期化
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // 1秒間のバッファ（44.1kHz）
+                const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                // ホワイトノイズの生成 (-1.0 から 1.0 の乱数)
+                for (let i = 0; i < audioCtx.sampleRate; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.loop = true;
+                source.connect(audioCtx.destination);
+                source.start();
+                
+                btn.textContent = "Noise Playing...";
+            }
+        });
+    </script>
+</body>
+</html>
