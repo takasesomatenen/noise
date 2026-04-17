@@ -5,39 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minimal Noise</title>
     <style>
-        /* 背景色は白 */
-        body { 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            background: #ffffff; 
-            margin: 0; 
-        }
-
-        /* 文字なしの正円ボタン（初期状態は黒） */
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #ffffff; margin: 0; }
         button { 
-            width: 80px; 
-            height: 80px; 
-            border-radius: 50%; 
-            border: none; 
-            background: #000000; /* オフの時は黒 */
-            cursor: pointer; 
+            width: 80px; height: 80px; border-radius: 50%; border: none; 
+            background: #000000; cursor: pointer; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); 
             outline: none;
         }
-
-        /* オン（再生中）の時のスタイル */
         button.active {
-            background: #e74c3c; /* オンになると赤 */
+            background: #e74c3c; 
             box-shadow: 0 0 25px rgba(231, 76, 60, 0.5);
-            transform: scale(0.85); /* 押している間少し小さく */
-        }
-
-        /* タップ時の視覚効果（スマホ用） */
-        button:active {
-            opacity: 0.8;
+            transform: scale(0.85); 
         }
     </style>
 </head>
@@ -46,23 +25,39 @@
 
     <script>
         let audioCtx;
-        let scriptNode; 
+        let scriptNode;
+        let gainNode; // 音量をコントロールする部品
         let lastOut = 0; 
         const btn = document.getElementById('btn');
 
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
 
             if (scriptNode) {
-                // 停止
-                scriptNode.disconnect();
-                scriptNode = null;
-                btn.classList.remove('active'); 
+                // --- 停止（フェードアウト） ---
+                const fadeTime = 0.5; // 0.5秒かけて消える
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fadeTime);
+                
+                btn.classList.remove('active');
+
+                // 音が完全に消えてから接続を切る
+                setTimeout(() => {
+                    if (scriptNode) {
+                        scriptNode.disconnect();
+                        scriptNode = null;
+                    }
+                }, fadeTime * 1000);
+
             } else {
-                // 再生
+                // --- 再生（フェードイン） ---
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+                gainNode = audioCtx.createGain(); // 音量調整ノード作成
+                
+                // 最初は無音(0)に設定
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     const outputBuffer = audioProcessingEvent.outputBuffer;
                     const outputData = outputBuffer.getChannelData(0);
@@ -73,8 +68,15 @@
                         lastOut = brown;
                     }
                 };
-                scriptNode.connect(audioCtx.destination);
-                btn.classList.add('active'); 
+
+                // 接続: ノイズ生成 -> 音量調整 -> スピーカー
+                scriptNode.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                // 0.5秒かけて音量を1まで上げる
+                gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
+                
+                btn.classList.add('active');
             }
         });
     </script>
