@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>White Noise Gen</title>
+    <title>Infinite Noise</title>
     <style>
         body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #121212; color: white; font-family: sans-serif; margin: 0; }
-        button { padding: 20px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #333; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: 0.3s; }
+        button { padding: 20px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #333; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: 0.3s; outline: none; }
     </style>
 </head>
 <body>
@@ -14,39 +14,41 @@
 
     <script>
         let audioCtx;
-        let source; // 今鳴っている音を覚えておく変数
+        let scriptNode; 
         const btn = document.getElementById('btn');
 
         btn.addEventListener('click', () => {
-            // AudioContextは最初のクリック時に1回だけ作成
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
 
-            if (source) {
-                // 音が鳴っているなら止める
-                source.stop();
-                source = null;
+            if (scriptNode) {
+                // 停止処理
+                scriptNode.disconnect();
+                scriptNode = null;
                 btn.textContent = "Noise Start";
                 btn.style.background = "#333";
             } else {
-                // 音が鳴っていないなら再生する
-                const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
-                const data = buffer.getChannelData(0);
-                
-                // ノイズ生成
-                for (let i = 0; i < audioCtx.sampleRate; i++) {
-                    data[i] = Math.random() * 2 - 1;
-                }
+                // リアルタイム生成ノードを作成
+                // 4096サンプルごとにONAudioprocessイベントを発生させる
+                scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
 
-                source = audioCtx.createBufferSource();
-                source.buffer = buffer;
-                source.loop = true;
-                source.connect(audioCtx.destination);
-                source.start();
+                // 音が必要になるたびにこの関数が呼ばれる
+                scriptNode.onaudioprocess = (audioProcessingEvent) => {
+                    const outputBuffer = audioProcessingEvent.outputBuffer;
+                    const outputData = outputBuffer.getChannelData(0);
+
+                    // その瞬間のための新しい乱数を、バッファの数だけ計算
+                    for (let i = 0; i < outputBuffer.length; i++) {
+                        outputData[i] = Math.random() * 2 - 1;
+                    }
+                };
+
+                // 出力（スピーカー）に接続
+                scriptNode.connect(audioCtx.destination);
                 
                 btn.textContent = "Noise Stop";
-                btn.style.background = "#e74c3c"; // 停止ボタンっぽく赤色に
+                btn.style.background = "#e74c3c";
             }
         });
     </script>
