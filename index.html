@@ -3,19 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Infinite Noise Gen</title>
+    <title>Minimal Noise</title>
     <style>
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #121212; color: white; font-family: sans-serif; margin: 0; }
-        button { padding: 20px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #333; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: 0.3s; outline: none; }
+        /* 背景色を白に変更 */
+        body { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            background: #ffffff; 
+            margin: 0; 
+        }
+
+        /* 文字なしの正円ボタン */
+        button { 
+            width: 80px; 
+            height: 80px; 
+            border-radius: 50%; 
+            border: 2px solid #eeeeee; 
+            background: #ffffff; /* 初期状態は白 */
+            cursor: pointer; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
+            transition: all 0.4s ease; 
+            outline: none;
+        }
+
+        /* オン（再生中）の時のスタイル */
+        button.active {
+            background: #e74c3c; /* 赤色 */
+            border-color: #e74c3c;
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.4);
+            transform: scale(0.9); /* 少し凹んだような演出 */
+        }
     </style>
 </head>
 <body>
-    <button id="btn">Noise Start</button>
+    <button id="btn"></button>
 
     <script>
         let audioCtx;
         let scriptNode; 
-        let lastOut = 0; // 前回の出力値を覚えておく変数
+        let lastOut = 0; 
         const btn = document.getElementById('btn');
 
         btn.addEventListener('click', () => {
@@ -24,29 +52,25 @@
             }
 
             if (scriptNode) {
+                // 停止
                 scriptNode.disconnect();
                 scriptNode = null;
-                btn.textContent = "Noise Start";
-                btn.style.background = "#333";
+                btn.classList.remove('active'); // 赤から白へ
             } else {
+                // 再生
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
-
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     const outputBuffer = audioProcessingEvent.outputBuffer;
                     const outputData = outputBuffer.getChannelData(0);
-
                     for (let i = 0; i < outputBuffer.length; i++) {
                         const white = Math.random() * 2 - 1;
-                        // 前回の音と混ぜて「ザー」という低い音にする
                         const brown = (lastOut * 0.9) + (white * 0.1);
                         outputData[i] = brown;
                         lastOut = brown;
                     }
                 };
-
                 scriptNode.connect(audioCtx.destination);
-                btn.textContent = "Noise Stop";
-                btn.style.background = "#e74c3c";
+                btn.classList.add('active'); // 白から赤へ
             }
         });
     </script>
