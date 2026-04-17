@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>White Noise Gen</title>
     <style>
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #121212; color: white; font-family: sans-serif; }
-        button { padding: 20px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #333; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #121212; color: white; font-family: sans-serif; margin: 0; }
+        button { padding: 20px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #333; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: 0.3s; }
     </style>
 </head>
 <body>
@@ -14,29 +14,39 @@
 
     <script>
         let audioCtx;
+        let source; // 今鳴っている音を覚えておく変数
         const btn = document.getElementById('btn');
 
         btn.addEventListener('click', () => {
+            // AudioContextは最初のクリック時に1回だけ作成
             if (!audioCtx) {
-                // AudioContextの初期化
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // 1秒間のバッファ（44.1kHz）
+            }
+
+            if (source) {
+                // 音が鳴っているなら止める
+                source.stop();
+                source = null;
+                btn.textContent = "Noise Start";
+                btn.style.background = "#333";
+            } else {
+                // 音が鳴っていないなら再生する
                 const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
                 const data = buffer.getChannelData(0);
                 
-                // ホワイトノイズの生成 (-1.0 から 1.0 の乱数)
+                // ノイズ生成
                 for (let i = 0; i < audioCtx.sampleRate; i++) {
                     data[i] = Math.random() * 2 - 1;
                 }
 
-                const source = audioCtx.createBufferSource();
+                source = audioCtx.createBufferSource();
                 source.buffer = buffer;
                 source.loop = true;
                 source.connect(audioCtx.destination);
                 source.start();
                 
-                btn.textContent = "Noise Playing...";
+                btn.textContent = "Noise Stop";
+                btn.style.background = "#e74c3c"; // 停止ボタンっぽく赤色に
             }
         });
     </script>
