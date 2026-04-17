@@ -1,56 +1,41 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Infinite Noise</title>
-    <style>
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #121212; color: white; font-family: sans-serif; margin: 0; }
-        button { padding: 20px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #333; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: 0.3s; outline: none; }
-    </style>
-</head>
-<body>
-    <button id="btn">Noise Start</button>
+    let audioCtx;
+    let scriptNode; 
+    let lastOut = 0; // 前回の出力値を覚えておく変数
+    const btn = document.getElementById('btn');
 
-    <script>
-        let audioCtx;
-        let scriptNode; 
-        const btn = document.getElementById('btn');
+    btn.addEventListener('click', () => {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
 
-        btn.addEventListener('click', () => {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
+        if (scriptNode) {
+            scriptNode.disconnect();
+            scriptNode = null;
+            btn.textContent = "Noise Start";
+            btn.style.background = "#333";
+        } else {
+            scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
 
-            if (scriptNode) {
-                // 停止処理
-                scriptNode.disconnect();
-                scriptNode = null;
-                btn.textContent = "Noise Start";
-                btn.style.background = "#333";
-            } else {
-                // リアルタイム生成ノードを作成
-                // 4096サンプルごとにONAudioprocessイベントを発生させる
-                scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+            scriptNode.onaudioprocess = (audioProcessingEvent) => {
+                const outputBuffer = audioProcessingEvent.outputBuffer;
+                const outputData = outputBuffer.getChannelData(0);
 
-                // 音が必要になるたびにこの関数が呼ばれる
-                scriptNode.onaudioprocess = (audioProcessingEvent) => {
-                    const outputBuffer = audioProcessingEvent.outputBuffer;
-                    const outputData = outputBuffer.getChannelData(0);
+                for (let i = 0; i < outputBuffer.length; i++) {
+                    const white = Math.random() * 2 - 1;
+                    
+                    // 【ここがポイント！】
+                    // 今回の音 = (前回の音 * 0.9) + (新しい乱数 * 0.1)
+                    // 90%くらい前の音を引き継ぐことで、急激な変化を抑えます。
+                    const brown = (lastOut * 0.9) + (white * 0.1);
+                    
+                    outputData[i] = brown;
+                    lastOut = brown; // 今回の音を「次回用」に保存
+                }
+            };
 
-                    // その瞬間のための新しい乱数を、バッファの数だけ計算
-                    for (let i = 0; i < outputBuffer.length; i++) {
-                        outputData[i] = Math.random() * 2 - 1;
-                    }
-                };
-
-                // 出力（スピーカー）に接続
-                scriptNode.connect(audioCtx.destination);
-                
-                btn.textContent = "Noise Stop";
-                btn.style.background = "#e74c3c";
-            }
-        });
-    </script>
-</body>
-</html>
+            scriptNode.connect(audioCtx.destination);
+            btn.textContent = "Noise Stop";
+            btn.style.background = "#e74c3c";
+        }
+    });
+                    
