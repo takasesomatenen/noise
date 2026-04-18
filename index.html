@@ -2,22 +2,19 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio-Visual Noise</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Full-Screen Noise</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; display: flex; justify-content: center; align-items: center; }
-        /* 画面全体に広がるキャンバス */
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        /* ボタンを一番手前に */
+        body { margin: 0; overflow: hidden; background: #000; }
+        /* キャンバスを画面いっぱいに固定 */
+        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         button { 
-            position: relative; z-index: 10;
-            width: 80px; height: 80px; border-radius: 50%; border: none; 
-            background: #000000; cursor: pointer; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;
+            width: 80px; height: 80px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
+            background: #000000; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
             transition: all 0.5s ease; outline: none;
-            border: 2px solid rgba(255,255,255,0.2);
         }
-        button.active { background: #e74c3c; transform: scale(0.85); box-shadow: 0 0 30px rgba(231, 76, 60, 0.6); }
+        button.active { background: #e74c3c; transform: translate(-50%, -50%) scale(0.85); box-shadow: 0 0 30px rgba(231, 76, 60, 0.6); }
     </style>
 </head>
 <body>
@@ -33,15 +30,16 @@
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
 
-        // キャンバスのサイズを画面に合わせる
+        // デバイスの画面サイズに合わせてキャンバスのピクセル数を設定
         function resize() {
-            canvas.width = window.innerWidth / 4; // 負荷軽減のため解像度を少し落とす
-            canvas.height = window.innerHeight / 4;
+            // 密度を調整（高解像度すぎると重いので適度に間引く）
+            canvas.width = window.innerWidth / 2; 
+            canvas.height = window.innerHeight / 2;
         }
         window.addEventListener('resize', resize);
         resize();
 
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -54,7 +52,7 @@
                     if (scriptNode) {
                         scriptNode.disconnect();
                         scriptNode = null;
-                        ctx.clearRect(0, 0, canvas.width, canvas.height); // 停止時に画面をクリア
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
                     }
                 }, fadeTime * 1000);
             } else {
@@ -62,31 +60,35 @@
                 gainNode = audioCtx.createGain();
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
 
-                // ピクセル描画用のデータ準備
+                // --- 画面全体を埋めるためのImageDataを生成 ---
                 const imgData = ctx.createImageData(canvas.width, canvas.height);
 
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
                     
+                    // 音の生成
                     for (let i = 0; i < outputData.length; i++) {
                         const white = Math.random() * 2 - 1;
                         const brown = (lastOut * 0.9) + (white * 0.1);
                         outputData[i] = brown;
                         lastOut = brown;
-
-                        // --- ビジュアライズ処理 ---
-                        // 音の数値（-1〜1）を 0〜255 の輝度に変換
-                        const brightness = (brown + 1) * 128;
-                        
-                        // キャンバス上の対応する位置に色を塗る
-                        // i 番目の音を i 番目のピクセル（RGBAなので4つ飛ばし）に代入
-                        const p = i * 4;
-                        imgData.data[p] = brightness;     // R
-                        imgData.data[p + 1] = brightness; // G
-                        imgData.data[p + 2] = brightness; // B
-                        imgData.data[p + 3] = 255;        // A (不透明度)
                     }
-                    // 描画を更新
+
+                    // --- ビジュアル：画面の全ピクセルを走査して塗る ---
+                    // 音のデータ（4096個）を使い切っても、ループして画面の最後まで塗りつぶす
+                    let audioIdx = 0;
+                    for (let i = 0; i < imgData.data.length; i += 4) {
+                        const val = outputData[audioIdx];
+                        const brightness = (val + 1) * 128;
+                        
+                        imgData.data[i] = brightness;     // R
+                        imgData.data[i + 1] = brightness; // G
+                        imgData.data[i + 2] = brightness; // B
+                        imgData.data[i + 3] = 255;        // A
+                        
+                        // 次の音のデータへ（4096を超えたら0に戻る）
+                        audioIdx = (audioIdx + 1) % outputData.length;
+                    }
                     ctx.putImageData(imgData, 0, 0);
                 };
 
