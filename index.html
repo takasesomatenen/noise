@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Raindrop Noise Tuner</title>
+    <title>Minimal Rain Noise</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
-        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; opacity: 0.8; }
+        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         .controls {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 12px;
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px;
             background: rgba(0, 0, 0, 0.8); padding: 25px; border-radius: 30px; backdrop-filter: blur(20px);
             width: 260px; border: 1px solid rgba(255,255,255,0.1);
         }
@@ -26,41 +26,26 @@
 <body>
     <canvas id="visualizer"></canvas>
     <div class="controls">
-        <div class="slider-group"><div class="label">TONE COLOR (BASE)</div><input type="range" id="filterRange" min="0" max="1" step="0.01" value="0.5"></div>
-        <div class="slider-group"><div class="label">DENSITY (RAINDROP)</div><input type="range" id="densityRange" min="0" max="1" step="0.01" value="0.2"></div>
-        <div class="slider-group"><div class="label">DELAY (ECHO)</div><input type="range" id="delayRange" min="0" max="0.8" step="0.01" value="0.5"></div>
-        <div class="slider-group"><div class="label">REVERB (SPACE)</div><input type="range" id="reverbRange" min="0" max="1" step="0.01" value="0.8"></div>
+        <div class="slider-group"><div class="label">BASE HUM (ザー)</div><input type="range" id="baseRange" min="0" max="0.1" step="0.001" value="0.01"></div>
+        <div class="slider-group"><div class="label">DENSITY (粒の密度)</div><input type="range" id="densityRange" min="0" max="0.1" step="0.0001" value="0.005"></div>
         <button id="btn"></button>
     </div>
 
     <script>
-        let audioCtx, scriptNode, gainNode, analyserNode, delayNode, delayGain, reverbNode, reverbGain;
-        let lastOut = 0, blendValue = 0.5, densityValue = 0.2;
-        let pLastOut = 0; // パルス用のフィルター変数
+        let audioCtx, scriptNode, gainNode, analyserNode;
+        let lastOut = 0, pLastOut = 0;
+        let baseVol = 0.01, density = 0.005;
 
         const btn = document.getElementById('btn');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d', { alpha: false });
 
-        // スライダー操作（即時反映）
-        document.getElementById('filterRange').oninput = (e) => blendValue = parseFloat(e.target.value);
-        document.getElementById('densityRange').oninput = (e) => densityValue = parseFloat(e.target.value);
-        document.getElementById('delayRange').oninput = (e) => { if(delayGain) delayGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.05); };
-        document.getElementById('reverbRange').oninput = (e) => { if(reverbGain) reverbGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.05); };
+        document.getElementById('baseRange').oninput = (e) => baseVol = parseFloat(e.target.value);
+        document.getElementById('densityRange').oninput = (e) => density = parseFloat(e.target.value);
 
         function resize() { canvas.width = window.innerWidth / 2; canvas.height = window.innerHeight / 2; }
         window.addEventListener('resize', resize);
         resize();
-
-        function createReverbBuffer() {
-            const len = audioCtx.sampleRate * 4; // 4秒の非常に長い残響（洞窟モード）
-            const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
-            for (let c = 0; c < 2; c++) {
-                const data = buf.getChannelData(c);
-                for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 5); // 減衰を急激に
-            }
-            return buf;
-        }
 
         async function toggleNoise() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -71,69 +56,40 @@
                 btn.classList.remove('active');
                 setTimeout(() => { if(scriptNode){ scriptNode.disconnect(); scriptNode = null; } }, 500);
             } else {
-                lastOut = 0; pLastOut = 0;
-                scriptNode = audioCtx.createScriptProcessor(8192, 1, 1);
-                
+                scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 gainNode = audioCtx.createGain();
-                delayNode = audioCtx.createDelay();
-                delayNode.delayTime.value = 0.6; // 0.6秒遅れ
-                delayGain = audioCtx.createGain();
-                delayGain.gain.value = document.getElementById('delayRange').value;
-
-                reverbNode = audioCtx.createConvolver();
-                reverbNode.buffer = createReverbBuffer();
-                reverbGain = audioCtx.createGain();
-                reverbGain.gain.value = document.getElementById('reverbRange').value;
-
                 analyserNode = audioCtx.createAnalyser();
                 analyserNode.fftSize = 2048;
 
                 scriptNode.onaudioprocess = (e) => {
                     const out = e.outputBuffer.getChannelData(0);
-                    let lOut = lastOut;
-                    let plOut = pLastOut;
-                    
-                    // 雨だれ（パルス）の生成ロジック
-                    const baseProb = 0.0002; // 基本的な発生確率（極小）
-                    const prob = baseProb + (densityValue * 0.005); // DENSITYスライダーで調整
+                    let lOut = lastOut, plOut = pLastOut;
                     
                     for (let i = 0; i < out.length; i++) {
-                        // 1. ベースノイズ（ザーという音、音量は抑えめに）
+                        // 1. ベースのザー音（極小）
                         const w = Math.random() * 2 - 1;
-                        const b = (lOut * 0.96) + (w * 0.04);
+                        const b = (lOut * 0.98) + (w * 0.02);
                         lOut = b;
-                        const baseOut = ((w * (1 - blendValue)) + (b * blendValue)) * 0.1; // 0.1倍に抑える
 
-                        // 2. パルスノイズ（雨だれ、一瞬だけ鳴る）
-                        let pulseOut = 0;
-                        if (Math.random() < prob) {
-                            pulseOut = (Math.random() * 2 - 1); // 瞬間的に最大音量
+                        // 2. パルス（一瞬の粒）
+                        let pulse = 0;
+                        if (Math.random() < density) {
+                            pulse = (Math.random() * 2 - 1);
                         }
-                        
-                        // パルス音を少しマイルドにする（高音を削る）
-                        plOut = (plOut * 0.5) + (pulseOut * 0.5);
-                        
-                        // ベースとパルスを混ぜる
-                        out[i] = baseOut + plOut * 0.8; 
+                        // 粒を少しだけ滑らかにする
+                        plOut = (plOut * 0.6) + (pulse * 0.4);
+
+                        out[i] = (b * baseVol) + (plOut * 0.7);
                     }
                     lastOut = lOut; pLastOut = plOut;
                 };
 
-                // 繋ぎ順（ルーティング）
                 scriptNode.connect(analyserNode);
-                analyserNode.connect(gainNode); // 1. 直接スピーカーへ
-                
-                analyserNode.connect(delayNode); // 2. ディレイの道
-                delayNode.connect(delayGain);
-                delayGain.connect(gainNode);
-
-                analyserNode.connect(reverbNode); // 3. リバーブの道
-                reverbNode.connect(reverbGain);
-                reverbGain.connect(gainNode);
-
+                analyserNode.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
+
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0.7, audioCtx.currentTime + 0.5);
+                gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
                 draw();
             }
@@ -147,13 +103,15 @@
             const data = new Uint8Array(analyserNode.frequencyBinCount);
             analyserNode.getByteFrequencyData(data);
             const imgData = ctx.createImageData(canvas.width, 1);
+            
             for (let i = 0; i < canvas.width; i++) {
                 const val = data[Math.floor((i / canvas.width) * data.length)];
                 const p = i * 4;
-                // 色彩設計を少し変更（パルスが見えやすいように赤を強調）
-                imgData.data[p] = val < 100 ? val * 2.5 : 255;
-                imgData.data[p+1] = val < 128 ? 0 : (val - 128) * 3;
-                imgData.data[p+2] = val < 200 ? 0 : (val - 200) * 8;
+                // 強度（val）が低いときは暗く、高いときだけ光るようにコントラストを強調
+                const brightness = val > 50 ? val : 0; 
+                imgData.data[p] = brightness < 150 ? brightness : 255; // R
+                imgData.data[p+1] = brightness < 150 ? 0 : (brightness - 150) * 2; // G
+                imgData.data[p+2] = brightness < 200 ? 0 : (brightness - 200) * 5; // B
                 imgData.data[p+3] = 255;
             }
             const temp = document.createElement('canvas');
