@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Universal Noise Tuner</title>
+    <title>Fixed Fade Noise Tuner</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -63,7 +63,6 @@
         }
         prepareImageData();
 
-        // --- 再生・停止のコア関数 ---
         async function toggleNoise() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -71,14 +70,16 @@
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
             if (scriptNode) {
-                const fadeTime = 0.5;
-                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fadeTime);
-                btn.classList.remove('active');
+                // --- 停止（フェードアウト） ---
+                const fadeOutTime = 0.5;
+                const now = audioCtx.currentTime;
+                // 現在の音量から0へ落とす
+                gainNode.gain.cancelScheduledValues(now);
+                gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + fadeOutTime);
                 
-                // メディアセッションの状態更新
-                if ('mediaSession' in navigator) {
-                    navigator.mediaSession.playbackState = "paused";
-                }
+                btn.classList.remove('active');
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
 
                 setTimeout(() => {
                     if (scriptNode) {
@@ -87,8 +88,11 @@
                         scriptNode = null;
                         analyserNode = null;
                     }
-                }, fadeTime * 1000);
+                }, fadeOutTime * 1000);
             } else {
+                // --- 再生開始（フェードイン復活） ---
+                lastOut = 0; // 内部変数のリセット
+
                 scriptNode = audioCtx.createScriptProcessor(8192, 1, 1);
                 gainNode = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
@@ -107,67 +111,3 @@
                 };
 
                 scriptNode.connect(gainNode);
-                gainNode.connect(analyserNode);
-                analyserNode.connect(audioCtx.destination);
-                
-                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0.7, audioCtx.currentTime + 0.5);
-                btn.classList.add('active');
-
-                // メディアセッションの設定
-                if ('mediaSession' in navigator) {
-                    navigator.mediaSession.metadata = new MediaMetadata({
-                        title: 'Noise Tuner',
-                        artist: 'Internal Sound Gen',
-                        album: 'Focus Noise'
-                    });
-                    navigator.mediaSession.playbackState = "playing";
-                    
-                    // イヤホン等のボタン操作を紐付け
-                    navigator.mediaSession.setActionHandler('play', toggleNoise);
-                    navigator.mediaSession.setActionHandler('pause', toggleNoise);
-                }
-
-                draw();
-            }
-        }
-
-        // クリック操作
-        btn.addEventListener('click', toggleNoise);
-
-        // キーボード操作 (Spaceキー)
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault(); // 画面スクロール防止
-                toggleNoise();
-            }
-        });
-
-        function draw() {
-            if (!analyserNode) return;
-            requestAnimationFrame(draw);
-            const bufferLength = analyserNode.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyserNode.getByteFrequencyData(dataArray);
-            
-            for (let i = 0; i < canvas.width; i++) {
-                const audioIdx = Math.floor((i / canvas.width) * bufferLength);
-                const value = dataArray[audioIdx];
-                let r, g, b;
-                if (value < 128) {
-                    r = value * 2; g = 0; b = 0;
-                } else if (value < 220) {
-                    r = 255; g = (value - 128) * 2.8; b = 0;
-                } else {
-                    r = 255; g = 255; b = (value - 220) * 7;
-                }
-                const p = i * 4;
-                imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
-            }
-            tempCtx.drawImage(canvas, 0, 0);
-            ctx.drawImage(tempCanvas, 0, 1);
-            ctx.putImageData(imgData, 0, 0);
-        }
-    </script>
-</body>
-</html>
