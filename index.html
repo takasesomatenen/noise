@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>High-Quality Noise Tuner</title>
+    <title>Full-Range Noise Tuner</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         .controls {
             position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 20px;
-            background: rgba(0, 0, 0, 0.6); padding: 25px; border-radius: 30px; backdrop-filter: blur(15px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.7); padding: 25px; border-radius: 30px; backdrop-filter: blur(15px);
         }
         button { 
             width: 65px; height: 65px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
-            background: #000; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); outline: none;
+            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none;
         }
         button.active { background: #e74c3c; box-shadow: 0 0 25px rgba(231, 76, 60, 0.7); transform: scale(0.9); }
         input[type=range] { width: 220px; cursor: pointer; accent-color: #e74c3c; margin: 10px 0; }
@@ -25,8 +24,8 @@
 <body>
     <canvas id="visualizer"></canvas>
     <div class="controls">
-        <div class="label">TONE COLOR</div>
-        <input type="range" id="filterRange" min="0" max="0.99" step="0.001" value="0.9">
+        <div class="label">HIGH-CUT / FULL-RANGE</div>
+        <input type="range" id="filterRange" min="0" max="1" step="0.01" value="0">
         <button id="btn"></button>
     </div>
 
@@ -36,15 +35,15 @@
         let gainNode;
         let analyserNode;
         let lastOut = 0;
-        let filterWeight = 0.9;
+        let blendValue = 0; // 0: ホワイト（全域）, 1: ブラウン（こもり）
 
         const btn = document.getElementById('btn');
         const range = document.getElementById('filterRange');
         const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d', { alpha: false }); // 描画パフォーマンス向上
+        const ctx = canvas.getContext('2d', { alpha: false });
 
         range.addEventListener('input', (e) => {
-            filterWeight = parseFloat(e.target.value);
+            blendValue = parseFloat(e.target.value);
         });
 
         function resize() {
@@ -71,7 +70,7 @@
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
             if (scriptNode) {
-                const fadeTime = 0.6;
+                const fadeTime = 0.5;
                 gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fadeTime);
                 btn.classList.remove('active');
                 setTimeout(() => {
@@ -83,27 +82,26 @@
                     }
                 }, fadeTime * 1000);
             } else {
-                // バッファサイズを 8192 に上げ、計算の安定性を優先（音質の「粗さ」を軽減）
                 scriptNode = audioCtx.createScriptProcessor(8192, 1, 1);
                 gainNode = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
                 analyserNode.fftSize = 2048;
-                analyserNode.smoothingTimeConstant = 0.3; // 動きを滑らかに
-
-                const bufferLength = analyserNode.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
 
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
                     let localLastOut = lastOut;
-                    let localWeight = filterWeight;
-                    let invWeight = 1.0 - localWeight;
-
+                    
                     for (let i = 0; i < outputData.length; i++) {
                         const white = Math.random() * 2 - 1;
-                        // 演算をより直接的にし、浮動小数点の誤差を最小化
-                        localLastOut = (localLastOut * localWeight) + (white * invWeight);
-                        outputData[i] = localLastOut;
+                        
+                        // こもり音（ブラウン）の計算
+                        const brown = (localLastOut * 0.96) + (white * 0.04);
+                        localLastOut = brown;
+
+                        // 【ここがポイント！】
+                        // スライダーが0なら「white（全域高音あり）」が100%
+                        // スライダーが1なら「brown（高音カット）」が100%
+                        outputData[i] = (white * (1 - blendValue)) + (brown * blendValue);
                     }
                     lastOut = localLastOut;
                 };
@@ -113,19 +111,20 @@
                 analyserNode.connect(audioCtx.destination);
                 
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.6); // 音割れ防止のため最大音量を少し下げ
+                gainNode.gain.linearRampToValueAtTime(0.7, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
 
                 function draw() {
                     if (!analyserNode) return;
                     requestAnimationFrame(draw);
+                    const bufferLength = analyserNode.frequencyBinCount;
+                    const dataArray = new Uint8Array(bufferLength);
                     analyserNode.getByteFrequencyData(dataArray);
                     
                     for (let i = 0; i < canvas.width; i++) {
                         const audioIdx = Math.floor((i / canvas.width) * bufferLength);
                         const value = dataArray[audioIdx];
                         let r, g, b;
-                        // 色彩設計をより繊細に調整
                         if (value < 128) {
                             r = value * 2; g = 0; b = 0;
                         } else if (value < 220) {
