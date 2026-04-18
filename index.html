@@ -3,22 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Waterfall Spectrogram</title>
+    <title>Noise Tuner</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
-        button { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;
-            width: 80px; height: 80px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
-            background: #000000; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
-            transition: all 0.5s ease; outline: none;
+        
+        /* 操作パネル */
+        .controls {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 20px;
+            background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 20px; backdrop-filter: blur(10px);
         }
-        button.active { background: #e74c3c; transform: translate(-50%, -50%) scale(0.85); box-shadow: 0 0 30px rgba(231, 76, 60, 0.6); }
+
+        button { 
+            width: 60px; height: 60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
+            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none;
+        }
+        button.active { background: #e74c3c; box-shadow: 0 0 20px rgba(231, 76, 60, 0.6); }
+
+        /* スライダーのデザイン */
+        input[type=range] {
+            width: 200px; cursor: pointer; accent-color: #e74c3c;
+        }
+        .label { color: white; font-size: 12px; letter-spacing: 1px; }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    <button id="btn"></button>
+    
+    <div class="controls">
+        <div class="label">COLOR / SMOOTHNESS</div>
+        <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
+        <button id="btn"></button>
+    </div>
 
     <script>
         let audioCtx;
@@ -26,9 +43,17 @@
         let gainNode;
         let analyserNode;
         let lastOut = 0;
+        let filterWeight = 0.9; // スライダーで変える値
+
         const btn = document.getElementById('btn');
+        const range = document.getElementById('filterRange');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
+
+        // スライダーの値が変更されたら変数に反映
+        range.addEventListener('input', (e) => {
+            filterWeight = parseFloat(e.target.value);
+        });
 
         function resize() {
             canvas.width = window.innerWidth / 2;
@@ -37,10 +62,7 @@
         window.addEventListener('resize', resize);
         resize();
 
-        let imgData;
-        let tempCanvas;
-        let tempCtx;
-
+        let imgData, tempCanvas, tempCtx;
         function prepareImageData() {
             imgData = ctx.createImageData(canvas.width, 1);
             tempCanvas = document.createElement('canvas');
@@ -49,10 +71,6 @@
             tempCanvas.height = canvas.height;
         }
         prepareImageData();
-        window.addEventListener('resize', () => {
-            resize();
-            prepareImageData();
-        });
 
         btn.addEventListener('click', () => {
             if (!audioCtx) {
@@ -75,18 +93,19 @@
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 gainNode = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
-                
                 analyserNode.fftSize = 2048;
                 const bufferLength = analyserNode.frequencyBinCount;
                 const dataArray = new Uint8Array(bufferLength);
-
-                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
 
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
                     for (let i = 0; i < outputData.length; i++) {
                         const white = Math.random() * 2 - 1;
-                        const brown = (lastOut * 0.9) + (white * 0.1);
+                        
+                        // 【スライダーの値(filterWeight)を反映】
+                        // 前の音をどれだけ引き継ぐかをリアルタイムに変更
+                        const brown = (lastOut * filterWeight) + (white * (1 - filterWeight));
+                        
                         outputData[i] = brown;
                         lastOut = brown;
                     }
@@ -95,21 +114,18 @@
                 scriptNode.connect(gainNode);
                 gainNode.connect(analyserNode);
                 analyserNode.connect(audioCtx.destination);
-                
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
 
                 function draw() {
                     if (!analyserNode) return;
                     requestAnimationFrame(draw);
-
                     analyserNode.getByteFrequencyData(dataArray);
-
                     for (let i = 0; i < canvas.width; i++) {
                         const ratio = i / canvas.width;
                         const audioIdx = Math.floor(ratio * bufferLength);
                         const value = dataArray[audioIdx];
-
                         let r, g, b;
                         if (value < 128) {
                             r = value * 2; g = 0; b = 0;
@@ -118,20 +134,11 @@
                         } else {
                             r = 255; g = 255; b = (value - 192) * 4;
                         }
-
                         const p = i * 4;
-                        imgData.data[p] = r;
-                        imgData.data[p + 1] = g;
-                        imgData.data[p + 2] = b;
-                        imgData.data[p + 3] = 255;
+                        imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
                     }
-
-                    // --- 修正：ウォーターフォールを上から下に ---
-                    // 1. 現在のメインCanvasの内容をテンポラリにコピー
                     tempCtx.drawImage(canvas, 0, 0);
-                    // 2. メインCanvasに、テンポラリの内容を1px下にずらして描画（0, 1）
                     ctx.drawImage(tempCanvas, 0, 1);
-                    // 3. 最上行に新しい1行を描画（0, 0）
                     ctx.putImageData(imgData, 0, 0);
                 }
                 draw();
