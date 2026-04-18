@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fixed Base Hum Noise</title>
+    <title>Dynamic Noise Tuner</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         .controls {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px;
-            background: rgba(0, 0, 0, 0.8); padding: 25px; border-radius: 30px; backdrop-filter: blur(20px);
-            width: 260px; border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0, 0, 0, 0.85); padding: 25px; border-radius: 30px; backdrop-filter: blur(20px);
+            width: 260px; border: 1px solid rgba(255,255,255,0.15);
         }
         .slider-group { width: 100%; display: flex; flex-direction: column; gap: 4px; }
-        .label { font-size: 9px; letter-spacing: 2px; font-weight: bold; opacity: 0.5; text-align: center; }
-        input[type=range] { width: 100%; cursor: pointer; accent-color: #e74c3c; }
+        .label { font-size: 10px; letter-spacing: 2px; font-weight: bold; opacity: 0.6; text-align: center; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #e74c3c; margin: 8px 0; }
         button { 
             width: 55px; height: 55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
-            background: #000; cursor: pointer; transition: 0.3s; margin-top: 10px;
+            background: #000; cursor: pointer; transition: 0.3s; margin-top: 5px;
         }
         button.active { background: #e74c3c; box-shadow: 0 0 20px rgba(231, 76, 60, 0.6); }
     </style>
@@ -26,8 +26,8 @@
 <body>
     <canvas id="visualizer"></canvas>
     <div class="controls">
-        <div class="slider-group"><div class="label">BASE HUM (背景のザー音)</div><input type="range" id="baseRange" min="0" max="0.5" step="0.001" value="0.05"></div>
-        <div class="slider-group"><div class="label">DENSITY (粒の密度)</div><input type="range" id="densityRange" min="0" max="0.05" step="0.0001" value="0.005"></div>
+        <div class="slider-group"><div class="label">BASE HUM (背景の持続音)</div><input type="range" id="baseRange" min="0" max="1" step="0.01" value="0.2"></div>
+        <div class="slider-group"><div class="label">DENSITY (粒から砂嵐へ)</div><input type="range" id="densityRange" min="0" max="1" step="0.01" value="0.1"></div>
         <button id="btn"></button>
     </div>
 
@@ -35,18 +35,18 @@
         let audioCtx, scriptNode, gainNode, analyserNode;
         let lastOut = 0, pLastOut = 0;
         
-        // グローバルな設定オブジェクト（これを onaudioprocess 内で参照する）
-        const settings = {
-            baseVol: 0.05,
-            density: 0.005
+        // スライダーの値を直接保持
+        const config = {
+            base: 0.2,
+            density: 0.1
         };
 
         const btn = document.getElementById('btn');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d', { alpha: false });
 
-        document.getElementById('baseRange').oninput = (e) => settings.baseVol = parseFloat(e.target.value);
-        document.getElementById('densityRange').oninput = (e) => settings.density = parseFloat(e.target.value);
+        document.getElementById('baseRange').oninput = (e) => config.base = parseFloat(e.target.value);
+        document.getElementById('densityRange').oninput = (e) => config.density = parseFloat(e.target.value);
 
         function resize() { canvas.width = window.innerWidth / 2; canvas.height = window.innerHeight / 2; }
         window.addEventListener('resize', resize);
@@ -71,20 +71,24 @@
                     let lOut = lastOut, plOut = pLastOut;
                     
                     for (let i = 0; i < out.length; i++) {
-                        // 1. 背景のザー音
+                        // 1. 背景の持続音
                         const w = Math.random() * 2 - 1;
-                        const b = (lOut * 0.98) + (w * 0.02);
+                        const b = (lOut * 0.95) + (w * 0.05);
                         lOut = b;
 
-                        // 2. パルスの粒
+                        // 2. パルス（DENSITYを上げると連続的な砂嵐へ）
                         let pulse = 0;
-                        if (Math.random() < settings.density) {
+                        // config.densityが大きくなると、ほぼ毎サンプル音が鳴るようになる
+                        if (Math.random() < config.density) {
                             pulse = (Math.random() * 2 - 1);
                         }
-                        plOut = (plOut * 0.6) + (pulse * 0.4);
+                        
+                        // DENSITYが高いときはパルスを滑らかにしすぎない（砂嵐の質感を出す）
+                        const smooth = 0.9 - (config.density * 0.5);
+                        plOut = (plOut * smooth) + (pulse * (1 - smooth));
 
-                        // スライダーの値をリアルタイムに反映
-                        out[i] = (b * settings.baseVol) + (plOut * 0.7);
+                        // 最終出力
+                        out[i] = (b * config.base * 0.5) + (plOut * 0.8);
                     }
                     lastOut = lOut; pLastOut = plOut;
                 };
@@ -112,12 +116,12 @@
             for (let i = 0; i < canvas.width; i++) {
                 const val = data[Math.floor((i / canvas.width) * data.length)];
                 const p = i * 4;
-                // 背景音が小さいとき（valが低いとき）は画面を暗く保つ
-                const brightness = val > 40 ? val : 0; 
                 
-                imgData.data[p] = brightness;     // R
-                imgData.data[p+1] = brightness > 160 ? (brightness - 160) * 2 : 0; // G
-                imgData.data[p+2] = brightness > 210 ? (brightness - 210) * 5 : 0; // B
+                // 映像も音の大きさにダイレクトに反応させる
+                // 背景音が大きく、密度が高いほど、画面が白っぽくなる
+                imgData.data[p] = val; // R
+                imgData.data[p+1] = val > 120 ? (val - 120) * 2 : 0; // G
+                imgData.data[p+2] = val > 200 ? (val - 200) * 5 : 0; // B
                 imgData.data[p+3] = 255;
             }
             const temp = document.createElement('canvas');
