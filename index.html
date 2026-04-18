@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Minimal Rain Noise</title>
+    <title>Fixed Base Hum Noise</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -26,22 +26,27 @@
 <body>
     <canvas id="visualizer"></canvas>
     <div class="controls">
-        <div class="slider-group"><div class="label">BASE HUM (ザー)</div><input type="range" id="baseRange" min="0" max="0.1" step="0.001" value="0.01"></div>
-        <div class="slider-group"><div class="label">DENSITY (粒の密度)</div><input type="range" id="densityRange" min="0" max="0.1" step="0.0001" value="0.005"></div>
+        <div class="slider-group"><div class="label">BASE HUM (背景のザー音)</div><input type="range" id="baseRange" min="0" max="0.5" step="0.001" value="0.05"></div>
+        <div class="slider-group"><div class="label">DENSITY (粒の密度)</div><input type="range" id="densityRange" min="0" max="0.05" step="0.0001" value="0.005"></div>
         <button id="btn"></button>
     </div>
 
     <script>
         let audioCtx, scriptNode, gainNode, analyserNode;
         let lastOut = 0, pLastOut = 0;
-        let baseVol = 0.01, density = 0.005;
+        
+        // グローバルな設定オブジェクト（これを onaudioprocess 内で参照する）
+        const settings = {
+            baseVol: 0.05,
+            density: 0.005
+        };
 
         const btn = document.getElementById('btn');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d', { alpha: false });
 
-        document.getElementById('baseRange').oninput = (e) => baseVol = parseFloat(e.target.value);
-        document.getElementById('densityRange').oninput = (e) => density = parseFloat(e.target.value);
+        document.getElementById('baseRange').oninput = (e) => settings.baseVol = parseFloat(e.target.value);
+        document.getElementById('densityRange').oninput = (e) => settings.density = parseFloat(e.target.value);
 
         function resize() { canvas.width = window.innerWidth / 2; canvas.height = window.innerHeight / 2; }
         window.addEventListener('resize', resize);
@@ -66,20 +71,20 @@
                     let lOut = lastOut, plOut = pLastOut;
                     
                     for (let i = 0; i < out.length; i++) {
-                        // 1. ベースのザー音（極小）
+                        // 1. 背景のザー音
                         const w = Math.random() * 2 - 1;
                         const b = (lOut * 0.98) + (w * 0.02);
                         lOut = b;
 
-                        // 2. パルス（一瞬の粒）
+                        // 2. パルスの粒
                         let pulse = 0;
-                        if (Math.random() < density) {
+                        if (Math.random() < settings.density) {
                             pulse = (Math.random() * 2 - 1);
                         }
-                        // 粒を少しだけ滑らかにする
                         plOut = (plOut * 0.6) + (pulse * 0.4);
 
-                        out[i] = (b * baseVol) + (plOut * 0.7);
+                        // スライダーの値をリアルタイムに反映
+                        out[i] = (b * settings.baseVol) + (plOut * 0.7);
                     }
                     lastOut = lOut; pLastOut = plOut;
                 };
@@ -107,11 +112,12 @@
             for (let i = 0; i < canvas.width; i++) {
                 const val = data[Math.floor((i / canvas.width) * data.length)];
                 const p = i * 4;
-                // 強度（val）が低いときは暗く、高いときだけ光るようにコントラストを強調
-                const brightness = val > 50 ? val : 0; 
-                imgData.data[p] = brightness < 150 ? brightness : 255; // R
-                imgData.data[p+1] = brightness < 150 ? 0 : (brightness - 150) * 2; // G
-                imgData.data[p+2] = brightness < 200 ? 0 : (brightness - 200) * 5; // B
+                // 背景音が小さいとき（valが低いとき）は画面を暗く保つ
+                const brightness = val > 40 ? val : 0; 
+                
+                imgData.data[p] = brightness;     // R
+                imgData.data[p+1] = brightness > 160 ? (brightness - 160) * 2 : 0; // G
+                imgData.data[p+2] = brightness > 210 ? (brightness - 210) * 5 : 0; // B
                 imgData.data[p+3] = 255;
             }
             const temp = document.createElement('canvas');
