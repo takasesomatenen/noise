@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram Noise</title>
+    <title>Waterfall Spectrogram</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -24,28 +24,25 @@
         let audioCtx;
         let scriptNode;
         let gainNode;
-        let analyserNode; // 周波数分析用のノード
+        let analyserNode;
         let lastOut = 0;
         const btn = document.getElementById('btn');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
 
         function resize() {
-            // 解像度は適度に落としてパフォーマンスを確保
             canvas.width = window.innerWidth / 2;
             canvas.height = window.innerHeight / 2;
         }
         window.addEventListener('resize', resize);
         resize();
 
-        // 描画用のImageDataを事前に生成
         let imgData;
         let tempCanvas;
         let tempCtx;
 
         function prepareImageData() {
-            imgData = ctx.createImageData(canvas.width, 1); // 1行分のデータ
-            // 過去の描画を保持するためのテンポラリキャンバス
+            imgData = ctx.createImageData(canvas.width, 1);
             tempCanvas = document.createElement('canvas');
             tempCtx = tempCanvas.getContext('2d');
             tempCanvas.width = canvas.width;
@@ -72,7 +69,6 @@
                         analyserNode.disconnect();
                         scriptNode = null;
                         analyserNode = null;
-                        // 停止時にクリアしない（過去の履歴を残す）
                     }
                 }, fadeTime * 1000);
             } else {
@@ -80,17 +76,14 @@
                 gainNode = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
                 
-                // 分析の設定（1024ポイント＝添付画像の分解能に合わせる）
-                analyserNode.fftSize = 2048; // fftSizeの半分がデータ数になる
-                const bufferLength = analyserNode.frequencyBinCount; // 1024
+                analyserNode.fftSize = 2048;
+                const bufferLength = analyserNode.frequencyBinCount;
                 const dataArray = new Uint8Array(bufferLength);
 
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
 
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
-                    
-                    // 音の生成
                     for (let i = 0; i < outputData.length; i++) {
                         const white = Math.random() * 2 - 1;
                         const brown = (lastOut * 0.9) + (white * 0.1);
@@ -99,7 +92,6 @@
                     }
                 };
 
-                // 接続: ノイズ生成 -> 音量調整 -> 分析 -> スピーカー
                 scriptNode.connect(gainNode);
                 gainNode.connect(analyserNode);
                 analyserNode.connect(audioCtx.destination);
@@ -107,45 +99,40 @@
                 gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
 
-                // 描画ループを開始
                 function draw() {
                     if (!analyserNode) return;
                     requestAnimationFrame(draw);
 
-                    // 現在の周波数データを取得
                     analyserNode.getByteFrequencyData(dataArray);
 
-                    // 1行分のImageDataを作成（横軸：周波数、縦軸：1px固定）
                     for (let i = 0; i < canvas.width; i++) {
-                        // 画面幅（canvas.width）に合わせて周波数データ（bufferLength）を間引く
                         const ratio = i / canvas.width;
                         const audioIdx = Math.floor(ratio * bufferLength);
-                        const value = dataArray[audioIdx]; // 0〜255の強さ
+                        const value = dataArray[audioIdx];
 
-                        // 色の計算（強さに応じて黒→赤→黄→白へ）
                         let r, g, b;
                         if (value < 128) {
-                            r = value * 2; g = 0; b = 0; // 黒〜赤
+                            r = value * 2; g = 0; b = 0;
                         } else if (value < 192) {
-                            r = 255; g = (value - 128) * 4; b = 0; // 赤〜黄
+                            r = 255; g = (value - 128) * 4; b = 0;
                         } else {
-                            r = 255; g = 255; b = (value - 192) * 4; // 黄〜白
+                            r = 255; g = 255; b = (value - 192) * 4;
                         }
 
                         const p = i * 4;
-                        imgData.data[p] = r;     // R
-                        imgData.data[p + 1] = g; // G
-                        imgData.data[p + 2] = b; // B
-                        imgData.data[p + 3] = 255; // A
+                        imgData.data[p] = r;
+                        imgData.data[p + 1] = g;
+                        imgData.data[p + 2] = b;
+                        imgData.data[p + 3] = 255;
                     }
 
-                    // --- ウォーターフォール：過去の描画を1px上にずらす ---
+                    // --- 修正：ウォーターフォールを上から下に ---
                     // 1. 現在のメインCanvasの内容をテンポラリにコピー
                     tempCtx.drawImage(canvas, 0, 0);
-                    // 2. メインCanvasに、テンポラリの内容を1px上にずらして描画
-                    ctx.drawImage(tempCanvas, 0, -1);
-                    // 3. 最下行に新しい1行を描画
-                    ctx.putImageData(imgData, 0, canvas.height - 1);
+                    // 2. メインCanvasに、テンポラリの内容を1px下にずらして描画（0, 1）
+                    ctx.drawImage(tempCanvas, 0, 1);
+                    // 3. 最上行に新しい1行を描画（0, 0）
+                    ctx.putImageData(imgData, 0, 0);
                 }
                 draw();
             }
