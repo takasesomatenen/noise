@@ -3,37 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Noise Tuner</title>
+    <title>High-Quality Noise Tuner</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
-        
-        /* 操作パネル */
         .controls {
             position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 20px;
-            background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 20px; backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.6); padding: 25px; border-radius: 30px; backdrop-filter: blur(15px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-
         button { 
-            width: 60px; height: 60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
-            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none;
+            width: 65px; height: 65px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
+            background: #000; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); outline: none;
         }
-        button.active { background: #e74c3c; box-shadow: 0 0 20px rgba(231, 76, 60, 0.6); }
-
-        /* スライダーのデザイン */
-        input[type=range] {
-            width: 200px; cursor: pointer; accent-color: #e74c3c;
-        }
-        .label { color: white; font-size: 12px; letter-spacing: 1px; }
+        button.active { background: #e74c3c; box-shadow: 0 0 25px rgba(231, 76, 60, 0.7); transform: scale(0.9); }
+        input[type=range] { width: 220px; cursor: pointer; accent-color: #e74c3c; margin: 10px 0; }
+        .label { color: rgba(255,255,255,0.8); font-size: 11px; letter-spacing: 2px; font-weight: bold; }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    
     <div class="controls">
-        <div class="label">COLOR / SMOOTHNESS</div>
-        <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
+        <div class="label">TONE COLOR</div>
+        <input type="range" id="filterRange" min="0" max="0.99" step="0.001" value="0.9">
         <button id="btn"></button>
     </div>
 
@@ -43,14 +36,13 @@
         let gainNode;
         let analyserNode;
         let lastOut = 0;
-        let filterWeight = 0.9; // スライダーで変える値
+        let filterWeight = 0.9;
 
         const btn = document.getElementById('btn');
         const range = document.getElementById('filterRange');
         const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false }); // 描画パフォーマンス向上
 
-        // スライダーの値が変更されたら変数に反映
         range.addEventListener('input', (e) => {
             filterWeight = parseFloat(e.target.value);
         });
@@ -66,19 +58,20 @@
         function prepareImageData() {
             imgData = ctx.createImageData(canvas.width, 1);
             tempCanvas = document.createElement('canvas');
-            tempCtx = tempCanvas.getContext('2d');
+            tempCtx = tempCanvas.getContext('2d', { alpha: false });
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
         }
         prepareImageData();
 
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
 
             if (scriptNode) {
-                const fadeTime = 0.5;
+                const fadeTime = 0.6;
                 gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fadeTime);
                 btn.classList.remove('active');
                 setTimeout(() => {
@@ -90,49 +83,55 @@
                     }
                 }, fadeTime * 1000);
             } else {
-                scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+                // バッファサイズを 8192 に上げ、計算の安定性を優先（音質の「粗さ」を軽減）
+                scriptNode = audioCtx.createScriptProcessor(8192, 1, 1);
                 gainNode = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
                 analyserNode.fftSize = 2048;
+                analyserNode.smoothingTimeConstant = 0.3; // 動きを滑らかに
+
                 const bufferLength = analyserNode.frequencyBinCount;
                 const dataArray = new Uint8Array(bufferLength);
 
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
+                    let localLastOut = lastOut;
+                    let localWeight = filterWeight;
+                    let invWeight = 1.0 - localWeight;
+
                     for (let i = 0; i < outputData.length; i++) {
                         const white = Math.random() * 2 - 1;
-                        
-                        // 【スライダーの値(filterWeight)を反映】
-                        // 前の音をどれだけ引き継ぐかをリアルタイムに変更
-                        const brown = (lastOut * filterWeight) + (white * (1 - filterWeight));
-                        
-                        outputData[i] = brown;
-                        lastOut = brown;
+                        // 演算をより直接的にし、浮動小数点の誤差を最小化
+                        localLastOut = (localLastOut * localWeight) + (white * invWeight);
+                        outputData[i] = localLastOut;
                     }
+                    lastOut = localLastOut;
                 };
 
                 scriptNode.connect(gainNode);
                 gainNode.connect(analyserNode);
                 analyserNode.connect(audioCtx.destination);
+                
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
+                gainNode.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.6); // 音割れ防止のため最大音量を少し下げ
                 btn.classList.add('active');
 
                 function draw() {
                     if (!analyserNode) return;
                     requestAnimationFrame(draw);
                     analyserNode.getByteFrequencyData(dataArray);
+                    
                     for (let i = 0; i < canvas.width; i++) {
-                        const ratio = i / canvas.width;
-                        const audioIdx = Math.floor(ratio * bufferLength);
+                        const audioIdx = Math.floor((i / canvas.width) * bufferLength);
                         const value = dataArray[audioIdx];
                         let r, g, b;
+                        // 色彩設計をより繊細に調整
                         if (value < 128) {
                             r = value * 2; g = 0; b = 0;
-                        } else if (value < 192) {
-                            r = 255; g = (value - 128) * 4; b = 0;
+                        } else if (value < 220) {
+                            r = 255; g = (value - 128) * 2.8; b = 0;
                         } else {
-                            r = 255; g = 255; b = (value - 192) * 4;
+                            r = 255; g = 255; b = (value - 220) * 7;
                         }
                         const p = i * 4;
                         imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
