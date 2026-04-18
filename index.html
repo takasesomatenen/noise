@@ -3,79 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Atmospheric Noise Tuner</title>
+    <title>Deep Space Noise Tuner</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
-        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; opacity: 0.8; }
-        
+        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; opacity: 0.9; }
         .controls {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px;
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 12px;
             background: rgba(0, 0, 0, 0.8); padding: 25px; border-radius: 30px; backdrop-filter: blur(20px);
-            width: 280px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            width: 260px; border: 1px solid rgba(255,255,255,0.1);
         }
-
-        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 5px; }
-        .label { font-size: 10px; letter-spacing: 2px; font-weight: bold; opacity: 0.6; text-align: center; }
-        
-        input[type=range] { width: 100%; cursor: pointer; accent-color: #e74c3c; margin: 5px 0; }
-
+        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 4px; }
+        .label { font-size: 9px; letter-spacing: 2px; font-weight: bold; opacity: 0.5; text-align: center; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #e74c3c; }
         button { 
-            width: 60px; height: 60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
-            background: #000; cursor: pointer; transition: all 0.3s ease; margin-top: 10px;
+            width: 55px; height: 55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
+            background: #000; cursor: pointer; transition: 0.3s; margin-top: 10px;
         }
-        button.active { background: #e74c3c; box-shadow: 0 0 25px rgba(231, 76, 60, 0.7); transform: scale(0.9); }
+        button.active { background: #e74c3c; box-shadow: 0 0 20px rgba(231, 76, 60, 0.6); }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    
     <div class="controls">
-        <div class="slider-group">
-            <div class="label">TONE COLOR</div>
-            <input type="range" id="filterRange" min="0" max="1" step="0.01" value="0">
-        </div>
-        <div class="slider-group">
-            <div class="label">DELAY (ECHO)</div>
-            <input type="range" id="delayRange" min="0" max="0.8" step="0.01" value="0">
-        </div>
-        <div class="slider-group">
-            <div class="label">REVERB (SPACE)</div>
-            <input type="range" id="reverbRange" min="0" max="0.9" step="0.01" value="0">
-        </div>
+        <div class="slider-group"><div class="label">TONE COLOR</div><input type="range" id="filterRange" min="0" max="1" step="0.01" value="0"></div>
+        <div class="slider-group"><div class="label">DELAY (ECHO)</div><input type="range" id="delayRange" min="0" max="0.8" step="0.01" value="0"></div>
+        <div class="slider-group"><div class="label">REVERB (SPACE)</div><input type="range" id="reverbRange" min="0" max="1" step="0.01" value="0"></div>
         <button id="btn"></button>
     </div>
 
     <script>
-        let audioCtx, scriptNode, gainNode, analyserNode, delayNode, delayGain, reverbNode, reverbGain, dryGain;
-        let lastOut = 0;
-        let blendValue = 0;
+        let audioCtx, scriptNode, gainNode, analyserNode, delayNode, delayGain, reverbNode, reverbGain;
+        let lastOut = 0, blendValue = 0;
 
         const btn = document.getElementById('btn');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d', { alpha: false });
 
-        // スライダー同期
-        document.getElementById('filterRange').addEventListener('input', (e) => blendValue = parseFloat(e.target.value));
-        document.getElementById('delayRange').addEventListener('input', (e) => delayGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.1));
-        document.getElementById('reverbRange').addEventListener('input', (e) => reverbGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.1));
+        // スライダー操作（即時反映）
+        document.getElementById('filterRange').oninput = (e) => blendValue = parseFloat(e.target.value);
+        document.getElementById('delayRange').oninput = (e) => { if(delayGain) delayGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.05); };
+        document.getElementById('reverbRange').oninput = (e) => { if(reverbGain) reverbGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.05); };
 
-        function resize() {
-            canvas.width = window.innerWidth / 2;
-            canvas.height = window.innerHeight / 2;
-        }
+        function resize() { canvas.width = window.innerWidth / 2; canvas.height = window.innerHeight / 2; }
         window.addEventListener('resize', resize);
         resize();
 
-        // 仮想リバーブデータの生成
         function createReverbBuffer() {
-            const len = audioCtx.sampleRate * 2; // 2秒の響き
+            const len = audioCtx.sampleRate * 3; // 3秒の長い残響
             const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
             for (let c = 0; c < 2; c++) {
                 const data = buf.getChannelData(c);
-                for (let i = 0; i < len; i++) {
-                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); // 徐々に減衰
-                }
+                for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
             }
             return buf;
         }
@@ -85,30 +64,20 @@
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
             if (scriptNode) {
-                const now = audioCtx.currentTime;
-                gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
+                gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
                 btn.classList.remove('active');
-                setTimeout(() => {
-                    if (scriptNode) {
-                        scriptNode.disconnect();
-                        scriptNode = null;
-                    }
-                }, 600);
+                setTimeout(() => { if(scriptNode){ scriptNode.disconnect(); scriptNode = null; } }, 500);
             } else {
                 lastOut = 0;
                 scriptNode = audioCtx.createScriptProcessor(8192, 1, 1);
                 
-                // エフェクト構築
+                // エフェクト部品の生成
                 gainNode = audioCtx.createGain();
-                dryGain = audioCtx.createGain(); // 原音用
-                
-                // Delay
                 delayNode = audioCtx.createDelay();
-                delayNode.delayTime.value = 0.4;
+                delayNode.delayTime.value = 0.5; // 0.5秒遅れ
                 delayGain = audioCtx.createGain();
                 delayGain.gain.value = document.getElementById('delayRange').value;
 
-                // Reverb
                 reverbNode = audioCtx.createConvolver();
                 reverbNode.buffer = createReverbBuffer();
                 reverbGain = audioCtx.createGain();
@@ -129,23 +98,26 @@
                     lastOut = lOut;
                 };
 
-                // ルーティング: Script -> dryGain / Delay / Reverb -> Analyser -> Out
-                scriptNode.connect(dryGain);
-                scriptNode.connect(delayNode);
+                // --- 繋ぎ順の修正 ---
+                // Script -> Analyser (音を視覚化へ)
+                scriptNode.connect(analyserNode);
+                
+                // Analyser -> 3つの道に分ける
+                analyserNode.connect(gainNode); // 1. 直接スピーカーへ
+                
+                analyserNode.connect(delayNode); // 2. ディレイの道
                 delayNode.connect(delayGain);
-                delayGain.connect(analyserNode);
+                delayGain.connect(gainNode);
 
-                scriptNode.connect(reverbNode);
+                analyserNode.connect(reverbNode); // 3. リバーブの道
                 reverbNode.connect(reverbGain);
-                reverbGain.connect(analyserNode);
+                reverbGain.connect(gainNode);
 
-                dryGain.connect(analyserNode);
-                analyserNode.connect(gainNode);
+                // 最後にスピーカーへ
                 gainNode.connect(audioCtx.destination);
 
-                const now = audioCtx.currentTime;
-                gainNode.gain.setValueAtTime(0, now);
-                gainNode.gain.linearRampToValueAtTime(0.7, now + 0.8);
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.7, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
                 draw();
             }
@@ -163,8 +135,8 @@
                 const val = data[Math.floor((i / canvas.width) * data.length)];
                 const p = i * 4;
                 imgData.data[p] = val < 128 ? val * 2 : 255;
-                imgData.data[p+1] = val < 128 ? 0 : (val - 128) * 2.8;
-                imgData.data[p+2] = val < 220 ? 0 : (val - 220) * 7;
+                imgData.data[p+1] = val < 128 ? 0 : (val - 128) * 2.5;
+                imgData.data[p+2] = val < 200 ? 0 : (val - 200) * 8;
                 imgData.data[p+3] = 255;
             }
             const temp = document.createElement('canvas');
