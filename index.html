@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Full-Screen Noise</title>
+    <title>Stretched Noise</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
-        /* キャンバスを画面いっぱいに固定 */
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         button { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;
@@ -30,10 +29,9 @@
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
 
-        // デバイスの画面サイズに合わせてキャンバスのピクセル数を設定
+        // デバイスの画面サイズに合わせてキャンバスを設定
         function resize() {
-            // 密度を調整（高解像度すぎると重いので適度に間引く）
-            canvas.width = window.innerWidth / 2; 
+            canvas.width = window.innerWidth / 2; // パフォーマンスのため内部解像度は下げる
             canvas.height = window.innerHeight / 2;
         }
         window.addEventListener('resize', resize);
@@ -60,7 +58,7 @@
                 gainNode = audioCtx.createGain();
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
 
-                // --- 画面全体を埋めるためのImageDataを生成 ---
+                // --- 画面を覆うImageDataを生成 ---
                 const imgData = ctx.createImageData(canvas.width, canvas.height);
 
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
@@ -74,20 +72,26 @@
                         lastOut = brown;
                     }
 
-                    // --- ビジュアル：画面の全ピクセルを走査して塗る ---
-                    // 音のデータ（4096個）を使い切っても、ループして画面の最後まで塗りつぶす
-                    let audioIdx = 0;
-                    for (let i = 0; i < imgData.data.length; i += 4) {
+                    // --- ビジュアル：画面全体に引き伸ばす ---
+                    // 画面のピクセル総数を取得
+                    const totalPixels = canvas.width * canvas.height;
+                    
+                    for (let p = 0; p < totalPixels; p++) {
+                        // 【ここがポイント！】
+                        // 画面上の位置（p）が、音のデータ（outputData）全体のどのあたりかを計算する
+                        // 例：画面の半分（totalPixels/2）の位置なら、音のデータの半分（2048）を見る
+                        const audioIdx = Math.floor((p / totalPixels) * outputData.length);
+                        
+                        // 計算した位置の音のデータを取得し、輝度に変換
                         const val = outputData[audioIdx];
                         const brightness = (val + 1) * 128;
                         
+                        // ImageDataに書き込む（RGBAなので4倍）
+                        const i = p * 4;
                         imgData.data[i] = brightness;     // R
                         imgData.data[i + 1] = brightness; // G
                         imgData.data[i + 2] = brightness; // B
                         imgData.data[i + 3] = 255;        // A
-                        
-                        // 次の音のデータへ（4096を超えたら0に戻る）
-                        audioIdx = (audioIdx + 1) % outputData.length;
                     }
                     ctx.putImageData(imgData, 0, 0);
                 };
