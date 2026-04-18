@@ -3,48 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fixed Audio Noise Tuner</title>
+    <title>Atmospheric Noise Tuner</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
+        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; opacity: 0.8; }
+        
         .controls {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 20px;
-            background: rgba(0, 0, 0, 0.7); padding: 25px; border-radius: 30px; backdrop-filter: blur(15px);
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px;
+            background: rgba(0, 0, 0, 0.8); padding: 25px; border-radius: 30px; backdrop-filter: blur(20px);
+            width: 280px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
         }
+
+        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 5px; }
+        .label { font-size: 10px; letter-spacing: 2px; font-weight: bold; opacity: 0.6; text-align: center; }
+        
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #e74c3c; margin: 5px 0; }
+
         button { 
-            width: 65px; height: 65px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
-            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none;
+            width: 60px; height: 60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
+            background: #000; cursor: pointer; transition: all 0.3s ease; margin-top: 10px;
         }
         button.active { background: #e74c3c; box-shadow: 0 0 25px rgba(231, 76, 60, 0.7); transform: scale(0.9); }
-        input[type=range] { width: 220px; cursor: pointer; accent-color: #e74c3c; margin: 10px 0; }
-        .label { color: rgba(255,255,255,0.8); font-size: 11px; letter-spacing: 2px; font-weight: bold; }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
+    
     <div class="controls">
-        <div class="label">HIGH-CUT / FULL-RANGE</div>
-        <input type="range" id="filterRange" min="0" max="1" step="0.01" value="0">
+        <div class="slider-group">
+            <div class="label">TONE COLOR</div>
+            <input type="range" id="filterRange" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="slider-group">
+            <div class="label">DELAY (ECHO)</div>
+            <input type="range" id="delayRange" min="0" max="0.8" step="0.01" value="0">
+        </div>
+        <div class="slider-group">
+            <div class="label">REVERB (SPACE)</div>
+            <input type="range" id="reverbRange" min="0" max="0.9" step="0.01" value="0">
+        </div>
         <button id="btn"></button>
     </div>
 
     <script>
-        let audioCtx;
-        let scriptNode;
-        let gainNode;
-        let analyserNode;
+        let audioCtx, scriptNode, gainNode, analyserNode, delayNode, delayGain, reverbNode, reverbGain, dryGain;
         let lastOut = 0;
         let blendValue = 0;
 
         const btn = document.getElementById('btn');
-        const range = document.getElementById('filterRange');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d', { alpha: false });
 
-        range.addEventListener('input', (e) => {
-            blendValue = parseFloat(e.target.value);
-        });
+        // スライダー同期
+        document.getElementById('filterRange').addEventListener('input', (e) => blendValue = parseFloat(e.target.value));
+        document.getElementById('delayRange').addEventListener('input', (e) => delayGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.1));
+        document.getElementById('reverbRange').addEventListener('input', (e) => reverbGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.1));
 
         function resize() {
             canvas.width = window.innerWidth / 2;
@@ -53,119 +67,110 @@
         window.addEventListener('resize', resize);
         resize();
 
-        let imgData, tempCanvas, tempCtx;
-        function prepareImageData() {
-            imgData = ctx.createImageData(canvas.width, 1);
-            tempCanvas = document.createElement('canvas');
-            tempCtx = tempCanvas.getContext('2d', { alpha: false });
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
+        // 仮想リバーブデータの生成
+        function createReverbBuffer() {
+            const len = audioCtx.sampleRate * 2; // 2秒の響き
+            const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+            for (let c = 0; c < 2; c++) {
+                const data = buf.getChannelData(c);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); // 徐々に減衰
+                }
+            }
+            return buf;
         }
-        prepareImageData();
 
         async function toggleNoise() {
-            // AudioContextの生成と再開
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
             if (scriptNode) {
-                // --- 停止（フェードアウト） ---
                 const now = audioCtx.currentTime;
-                gainNode.gain.cancelScheduledValues(now);
-                gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-                // 0に落とすときは指数関数的だと0になれないのでlinearを使用
                 gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
-                
                 btn.classList.remove('active');
-                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
-
                 setTimeout(() => {
                     if (scriptNode) {
                         scriptNode.disconnect();
-                        analyserNode.disconnect();
                         scriptNode = null;
-                        analyserNode = null;
                     }
                 }, 600);
             } else {
-                // --- 再生開始 ---
                 lastOut = 0;
-
                 scriptNode = audioCtx.createScriptProcessor(8192, 1, 1);
+                
+                // エフェクト構築
                 gainNode = audioCtx.createGain();
+                dryGain = audioCtx.createGain(); // 原音用
+                
+                // Delay
+                delayNode = audioCtx.createDelay();
+                delayNode.delayTime.value = 0.4;
+                delayGain = audioCtx.createGain();
+                delayGain.gain.value = document.getElementById('delayRange').value;
+
+                // Reverb
+                reverbNode = audioCtx.createConvolver();
+                reverbNode.buffer = createReverbBuffer();
+                reverbGain = audioCtx.createGain();
+                reverbGain.gain.value = document.getElementById('reverbRange').value;
+
                 analyserNode = audioCtx.createAnalyser();
                 analyserNode.fftSize = 2048;
 
-                scriptNode.onaudioprocess = (audioProcessingEvent) => {
-                    const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
-                    let localLastOut = lastOut;
-                    for (let i = 0; i < outputData.length; i++) {
-                        const white = Math.random() * 2 - 1;
-                        const brown = (localLastOut * 0.96) + (white * 0.04);
-                        localLastOut = brown;
-                        outputData[i] = (white * (1 - blendValue)) + (brown * blendValue);
+                scriptNode.onaudioprocess = (e) => {
+                    const out = e.outputBuffer.getChannelData(0);
+                    let lOut = lastOut;
+                    for (let i = 0; i < out.length; i++) {
+                        const w = Math.random() * 2 - 1;
+                        const b = (lOut * 0.96) + (w * 0.04);
+                        lOut = b;
+                        out[i] = (w * (1 - blendValue)) + (b * blendValue);
                     }
-                    lastOut = localLastOut;
+                    lastOut = lOut;
                 };
 
-                // 接続順序を整理
-                scriptNode.connect(gainNode);
-                gainNode.connect(analyserNode);
-                analyserNode.connect(audioCtx.destination);
-                
-                // フェードインの実行
+                // ルーティング: Script -> dryGain / Delay / Reverb -> Analyser -> Out
+                scriptNode.connect(dryGain);
+                scriptNode.connect(delayNode);
+                delayNode.connect(delayGain);
+                delayGain.connect(analyserNode);
+
+                scriptNode.connect(reverbNode);
+                reverbNode.connect(reverbGain);
+                reverbGain.connect(analyserNode);
+
+                dryGain.connect(analyserNode);
+                analyserNode.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
                 const now = audioCtx.currentTime;
-                gainNode.gain.cancelScheduledValues(now);
-                gainNode.gain.setValueAtTime(0.0001, now); // 0だと指数関数計算ができないので極小値から
-                gainNode.gain.exponentialRampToValueAtTime(0.7, now + 0.8);
-                
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.7, now + 0.8);
                 btn.classList.add('active');
-                if ('mediaSession' in navigator) {
-                    navigator.mediaSession.playbackState = "playing";
-                    navigator.mediaSession.metadata = new MediaMetadata({
-                        title: 'Noise Tuner',
-                        artist: 'Internal Sound Gen',
-                    });
-                    navigator.mediaSession.setActionHandler('play', toggleNoise);
-                    navigator.mediaSession.setActionHandler('pause', toggleNoise);
-                }
                 draw();
             }
         }
 
         btn.addEventListener('click', toggleNoise);
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-                toggleNoise();
-            }
-        });
 
         function draw() {
-            if (!analyserNode) return;
+            if (!scriptNode) return;
             requestAnimationFrame(draw);
-            const bufferLength = analyserNode.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyserNode.getByteFrequencyData(dataArray);
-            
+            const data = new Uint8Array(analyserNode.frequencyBinCount);
+            analyserNode.getByteFrequencyData(data);
+            const imgData = ctx.createImageData(canvas.width, 1);
             for (let i = 0; i < canvas.width; i++) {
-                const audioIdx = Math.floor((i / canvas.width) * bufferLength);
-                const value = dataArray[audioIdx];
-                let r, g, b;
-                if (value < 128) {
-                    r = value * 2; g = 0; b = 0;
-                } else if (value < 220) {
-                    r = 255; g = (value - 128) * 2.8; b = 0;
-                } else {
-                    r = 255; g = 255; b = (value - 220) * 7;
-                }
+                const val = data[Math.floor((i / canvas.width) * data.length)];
                 const p = i * 4;
-                imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
+                imgData.data[p] = val < 128 ? val * 2 : 255;
+                imgData.data[p+1] = val < 128 ? 0 : (val - 128) * 2.8;
+                imgData.data[p+2] = val < 220 ? 0 : (val - 220) * 7;
+                imgData.data[p+3] = 255;
             }
-            tempCtx.drawImage(canvas, 0, 0);
-            ctx.drawImage(tempCanvas, 0, 1);
+            const temp = document.createElement('canvas');
+            temp.width = canvas.width; temp.height = canvas.height;
+            temp.getContext('2d').drawImage(canvas, 0, 0);
+            ctx.drawImage(temp, 0, 1);
             ctx.putImageData(imgData, 0, 0);
         }
     </script>
