@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Deep Space Noise Tuner</title>
+    <title>Raindrop Noise Tuner</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
-        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; opacity: 0.9; }
+        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; opacity: 0.8; }
         .controls {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 12px;
@@ -26,15 +26,17 @@
 <body>
     <canvas id="visualizer"></canvas>
     <div class="controls">
-        <div class="slider-group"><div class="label">TONE COLOR</div><input type="range" id="filterRange" min="0" max="1" step="0.01" value="0"></div>
-        <div class="slider-group"><div class="label">DELAY (ECHO)</div><input type="range" id="delayRange" min="0" max="0.8" step="0.01" value="0"></div>
-        <div class="slider-group"><div class="label">REVERB (SPACE)</div><input type="range" id="reverbRange" min="0" max="1" step="0.01" value="0"></div>
+        <div class="slider-group"><div class="label">TONE COLOR (BASE)</div><input type="range" id="filterRange" min="0" max="1" step="0.01" value="0.5"></div>
+        <div class="slider-group"><div class="label">DENSITY (RAINDROP)</div><input type="range" id="densityRange" min="0" max="1" step="0.01" value="0.2"></div>
+        <div class="slider-group"><div class="label">DELAY (ECHO)</div><input type="range" id="delayRange" min="0" max="0.8" step="0.01" value="0.5"></div>
+        <div class="slider-group"><div class="label">REVERB (SPACE)</div><input type="range" id="reverbRange" min="0" max="1" step="0.01" value="0.8"></div>
         <button id="btn"></button>
     </div>
 
     <script>
         let audioCtx, scriptNode, gainNode, analyserNode, delayNode, delayGain, reverbNode, reverbGain;
-        let lastOut = 0, blendValue = 0;
+        let lastOut = 0, blendValue = 0.5, densityValue = 0.2;
+        let pLastOut = 0; // パルス用のフィルター変数
 
         const btn = document.getElementById('btn');
         const canvas = document.getElementById('visualizer');
@@ -42,6 +44,7 @@
 
         // スライダー操作（即時反映）
         document.getElementById('filterRange').oninput = (e) => blendValue = parseFloat(e.target.value);
+        document.getElementById('densityRange').oninput = (e) => densityValue = parseFloat(e.target.value);
         document.getElementById('delayRange').oninput = (e) => { if(delayGain) delayGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.05); };
         document.getElementById('reverbRange').oninput = (e) => { if(reverbGain) reverbGain.gain.setTargetAtTime(e.target.value, audioCtx.currentTime, 0.05); };
 
@@ -50,11 +53,11 @@
         resize();
 
         function createReverbBuffer() {
-            const len = audioCtx.sampleRate * 3; // 3秒の長い残響
+            const len = audioCtx.sampleRate * 4; // 4秒の非常に長い残響（洞窟モード）
             const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
             for (let c = 0; c < 2; c++) {
                 const data = buf.getChannelData(c);
-                for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
+                for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 5); // 減衰を急激に
             }
             return buf;
         }
@@ -68,13 +71,12 @@
                 btn.classList.remove('active');
                 setTimeout(() => { if(scriptNode){ scriptNode.disconnect(); scriptNode = null; } }, 500);
             } else {
-                lastOut = 0;
+                lastOut = 0; pLastOut = 0;
                 scriptNode = audioCtx.createScriptProcessor(8192, 1, 1);
                 
-                // エフェクト部品の生成
                 gainNode = audioCtx.createGain();
                 delayNode = audioCtx.createDelay();
-                delayNode.delayTime.value = 0.5; // 0.5秒遅れ
+                delayNode.delayTime.value = 0.6; // 0.6秒遅れ
                 delayGain = audioCtx.createGain();
                 delayGain.gain.value = document.getElementById('delayRange').value;
 
@@ -89,20 +91,36 @@
                 scriptNode.onaudioprocess = (e) => {
                     const out = e.outputBuffer.getChannelData(0);
                     let lOut = lastOut;
+                    let plOut = pLastOut;
+                    
+                    // 雨だれ（パルス）の生成ロジック
+                    const baseProb = 0.0002; // 基本的な発生確率（極小）
+                    const prob = baseProb + (densityValue * 0.005); // DENSITYスライダーで調整
+                    
                     for (let i = 0; i < out.length; i++) {
+                        // 1. ベースノイズ（ザーという音、音量は抑えめに）
                         const w = Math.random() * 2 - 1;
                         const b = (lOut * 0.96) + (w * 0.04);
                         lOut = b;
-                        out[i] = (w * (1 - blendValue)) + (b * blendValue);
+                        const baseOut = ((w * (1 - blendValue)) + (b * blendValue)) * 0.1; // 0.1倍に抑える
+
+                        // 2. パルスノイズ（雨だれ、一瞬だけ鳴る）
+                        let pulseOut = 0;
+                        if (Math.random() < prob) {
+                            pulseOut = (Math.random() * 2 - 1); // 瞬間的に最大音量
+                        }
+                        
+                        // パルス音を少しマイルドにする（高音を削る）
+                        plOut = (plOut * 0.5) + (pulseOut * 0.5);
+                        
+                        // ベースとパルスを混ぜる
+                        out[i] = baseOut + plOut * 0.8; 
                     }
-                    lastOut = lOut;
+                    lastOut = lOut; pLastOut = plOut;
                 };
 
-                // --- 繋ぎ順の修正 ---
-                // Script -> Analyser (音を視覚化へ)
+                // 繋ぎ順（ルーティング）
                 scriptNode.connect(analyserNode);
-                
-                // Analyser -> 3つの道に分ける
                 analyserNode.connect(gainNode); // 1. 直接スピーカーへ
                 
                 analyserNode.connect(delayNode); // 2. ディレイの道
@@ -113,9 +131,7 @@
                 reverbNode.connect(reverbGain);
                 reverbGain.connect(gainNode);
 
-                // 最後にスピーカーへ
                 gainNode.connect(audioCtx.destination);
-
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(0.7, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
@@ -134,8 +150,9 @@
             for (let i = 0; i < canvas.width; i++) {
                 const val = data[Math.floor((i / canvas.width) * data.length)];
                 const p = i * 4;
-                imgData.data[p] = val < 128 ? val * 2 : 255;
-                imgData.data[p+1] = val < 128 ? 0 : (val - 128) * 2.5;
+                // 色彩設計を少し変更（パルスが見えやすいように赤を強調）
+                imgData.data[p] = val < 100 ? val * 2.5 : 255;
+                imgData.data[p+1] = val < 128 ? 0 : (val - 128) * 3;
                 imgData.data[p+2] = val < 200 ? 0 : (val - 200) * 8;
                 imgData.data[p+3] = 255;
             }
