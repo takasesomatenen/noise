@@ -3,29 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Organic Wave Ambient Mixer</title>
+    <title>Organic Wave Ambient Mixer - Full</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
+        
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 7px;
             background: rgba(0, 0, 0, 0.6); padding: 18px; border-radius: 30px; backdrop-filter: blur(10px);
             min-width: 250px; border: 1px solid rgba(255,255,255,0.1);
         }
+
         button { 
             width: 50px; height: 50px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
             background: #000; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
         }
         button.active { background: #4ca1af; border-color: #4ca1af; box-shadow: 0 0 25px rgba(76, 161, 175, 0.6); transform: scale(0.9); }
+
         .slider-group { width: 100%; display: flex; flex-direction: column; gap: 5px; }
         .slider-item { display: flex; flex-direction: column; gap: 2px; }
+        
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
         .label { color: white; font-size: 8px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
+
+        /* ロゴ復活 */
+        .logo-container {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 5; color: white; text-align: center; white-space: nowrap;
+        }
+        .logo-text { font-size: 13px; font-weight: 300; letter-spacing: 0.3em; opacity: 0.6; text-transform: uppercase; }
+        .logo-symbol { display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: white; border-radius: 50%; margin-left: 10px; margin-right: 5px; }
+        .logo-symbol-outline { display: inline-block; vertical-align: middle; width: 8px; height: 8px; border: 1px solid white; border-radius: 50%; }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
+    
     <div class="controls">
         <button id="btn"></button>
         <div class="slider-group">
@@ -60,10 +74,14 @@
         </div>
     </div>
 
+    <!-- 下部のロゴ -->
+    <div class="logo-container">
+        <div class="logo-text">DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span></div>
+    </div>
+
     <script>
         let audioCtx, scriptNode, noiseGain, marimbaMasterGain, reverbNode, reverbGain, analyser;
         let lastOut = 0, baseFilterWeight = 0.7, waveHeight = 0.5, waveWidth = 0.7, isPlaying = false, marimbaTimer;
-        
         let phaseA = 0, phaseB = 0, phaseC = 0;
 
         const btn = document.getElementById('btn');
@@ -120,7 +138,13 @@
         function playMarimba() {
             if (!isPlaying) return;
             const now = audioCtx.currentTime;
-            const scale = [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00, 2349.32, 2637.02, 3135.96, 3520.00]; 
+            const scale = [
+                130.81, 146.83, 164.81, 196.00, 220.00,
+                261.63, 293.66, 329.63, 392.00, 440.00,
+                523.25, 587.33, 659.25, 783.99, 880.00,
+                1046.50, 1174.66, 1318.51, 1567.98, 1760.00,
+                2093.00, 2349.32, 2637.02, 3135.96, 3520.00
+            ]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
             const osc = audioCtx.createOscillator();
@@ -182,11 +206,7 @@
                     const out = e.outputBuffer.getChannelData(0);
                     const sampleRate = audioCtx.sampleRate;
                     
-                    // 【修正】右にスライドするほどゆったり（低周波）になるよう反転
-                    // 1.0(右) -> 約0.03Hz (非常にゆったり)
-                    // 0.0(左) -> 約0.8Hz (せわしない)
                     const baseFreq = 0.85 - (waveWidth * 0.82);
-                    
                     const incrA = (2 * Math.PI * baseFreq) / sampleRate;
                     const incrB = (2 * Math.PI * baseFreq * 0.73) / sampleRate;
                     const incrC = (2 * Math.PI * baseFreq * 1.41) / sampleRate;
@@ -195,13 +215,9 @@
                         phaseA += incrA;
                         phaseB += incrB;
                         phaseC += incrC;
-                        
-                        // 3波合成によるランダム性
                         const rawMod = (Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8;
                         const modulation = rawMod * (waveHeight * 0.25); 
-
                         const currentFilter = Math.max(0.01, Math.min(0.99, baseFilterWeight + modulation));
-
                         const white = Math.random() * 2 - 1;
                         const brown = (lastOut * currentFilter) + (white * (1 - currentFilter));
                         out[i] = brown;
