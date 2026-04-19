@@ -3,25 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Full Range Ambient Mixer</title>
+    <title>Wavy Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 10px;
-            background: rgba(0, 0, 0, 0.6); padding: 25px; border-radius: 30px; backdrop-filter: blur(10px);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
+            background: rgba(0, 0, 0, 0.6); padding: 20px; border-radius: 30px; backdrop-filter: blur(10px);
             min-width: 240px; border: 1px solid rgba(255,255,255,0.1);
         }
         button { 
-            width: 60px; height: 60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
+            width: 55px; height: 55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
             background: #000; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
         }
         button.active { background: #4ca1af; border-color: #4ca1af; box-shadow: 0 0 25px rgba(76, 161, 175, 0.6); transform: scale(0.9); }
-        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 8px; }
-        .slider-item { display: flex; flex-direction: column; gap: 4px; }
+        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+        .slider-item { display: flex; flex-direction: column; gap: 2px; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
-        .label { color: white; font-size: 9px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
+        .label { color: white; font-size: 8px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
         .logo-container {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 5; color: white; text-align: center; white-space: nowrap;
@@ -37,8 +37,12 @@
         <button id="btn"></button>
         <div class="slider-group">
             <div class="slider-item">
-                <div class="label">Noise Color</div>
+                <div class="label">Noise Color (Base)</div>
                 <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
+            </div>
+            <div class="slider-item">
+                <div class="label">Wavy (Auto Modulation)</div>
+                <input type="range" id="wavyRange" min="0" max="1" step="0.01" value="0.3">
             </div>
             <div class="slider-item">
                 <div class="label">Noise Volume</div>
@@ -64,10 +68,12 @@
 
     <script>
         let audioCtx, scriptNode, noiseGain, marimbaMasterGain, reverbNode, reverbGain, analyser;
-        let lastOut = 0, filterWeight = 0.9, isPlaying = false, marimbaTimer;
+        let lastOut = 0, baseFilterWeight = 0.9, wavyWeight = 0.3, isPlaying = false, marimbaTimer;
+        let lfoPhase = 0; // 波の位相
 
         const btn = document.getElementById('btn');
         const filterRange = document.getElementById('filterRange');
+        const wavyRange = document.getElementById('wavyRange');
         const noiseVolRange = document.getElementById('noiseVolRange');
         const marimbaVolRange = document.getElementById('marimbaVolRange');
         const reverbRange = document.getElementById('reverbRange');
@@ -77,7 +83,8 @@
 
         const getNoiseGainValue = (val) => parseFloat(val) * 0.6;
 
-        filterRange.addEventListener('input', (e) => filterWeight = parseFloat(e.target.value));
+        filterRange.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
+        wavyRange.addEventListener('input', (e) => wavyWeight = parseFloat(e.target.value));
         noiseVolRange.addEventListener('input', (e) => {
             if (noiseGain) noiseGain.gain.setTargetAtTime(getNoiseGainValue(e.target.value), audioCtx.currentTime, 0.05);
         });
@@ -102,7 +109,7 @@
         prepareImageData();
 
         function createReverb() {
-            const len = audioCtx.sampleRate * 4; // 残響を少し長く
+            const len = audioCtx.sampleRate * 4;
             const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
             for (let c = 0; c < 2; c++) {
                 const d = buf.getChannelData(c);
@@ -118,27 +125,12 @@
         function playMarimba() {
             if (!isPlaying) return;
             const now = audioCtx.currentTime;
-            
-            // 4オクターブにまたがる広大な音階 (C3 から C7+)
-            const scale = [
-                // Octave -1 (C3帯)
-                130.81, 146.83, 164.81, 196.00, 220.00,
-                // Octave 0 (C4帯 - 当初基準)
-                261.63, 293.66, 329.63, 392.00, 440.00,
-                // Octave 1 (C5帯)
-                523.25, 587.33, 659.25, 783.99, 880.00,
-                // Octave 2 (C6帯)
-                1046.50, 1174.66, 1318.51, 1567.98, 1760.00,
-                // Octave 3 (C7帯)
-                2093.00, 2349.32, 2637.02, 3135.96, 3520.00
-            ]; 
+            const scale = [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00, 2349.32, 2637.02, 3135.96, 3520.00]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
-            
-            // ピッチの動き（キック感）は、周波数にかかわらず一定の比率で
             osc.frequency.setValueAtTime(freq * 2, now);
             osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
 
@@ -151,8 +143,6 @@
 
             const sliderVal = parseInt(intervalRange.value);
             const interval = 3100 - sliderVal;
-            
-            // 低音は少し余韻を長めに、高音は短く（聴感上の自然さ）
             const decayBase = freq < 300 ? 1.2 : 0.6;
             const decay = Math.min(decayBase, (interval / 1000) + 0.1);
 
@@ -190,18 +180,30 @@
                 reverbGain = audioCtx.createGain();
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 2048;
+
                 noiseGain.gain.value = getNoiseGainValue(noiseVolRange.value);
                 marimbaMasterGain.gain.value = parseFloat(marimbaVolRange.value);
                 reverbGain.gain.value = parseFloat(reverbRange.value);
+
                 scriptNode.onaudioprocess = (e) => {
                     const out = e.outputBuffer.getChannelData(0);
+                    // LFOの進行（ゆっくりした波）
+                    // wavyWeightに応じて速度と振幅を変える
+                    const lfoSpeed = 0.0001 * (1 + wavyWeight * 2); 
+                    lfoPhase += lfoSpeed;
+                    
+                    // サイン波をベースに、少しだけランダムな揺らぎを加える
+                    const waveMod = Math.sin(lfoPhase * 2 * Math.PI) * (wavyWeight * 0.15);
+                    const currentFilter = Math.max(0.01, Math.min(0.99, baseFilterWeight + waveMod));
+
                     for (let i = 0; i < out.length; i++) {
                         const w = Math.random() * 2 - 1;
-                        const b = (lastOut * filterWeight) + (w * (1 - filterWeight));
+                        const b = (lastOut * currentFilter) + (w * (1 - currentFilter));
                         out[i] = b;
                         lastOut = b;
                     }
                 };
+
                 scriptNode.connect(noiseGain);
                 noiseGain.connect(analyser);
                 marimbaMasterGain.connect(analyser);
@@ -209,10 +211,12 @@
                 reverbNode.connect(reverbGain);
                 reverbGain.connect(analyser);
                 analyser.connect(audioCtx.destination);
+
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 const nyquist = audioCtx.sampleRate / 2;
                 const maxFreqToDraw = 24000;
                 const maxIndexToDraw = Math.floor((maxFreqToDraw / nyquist) * dataArray.length);
+
                 const draw = () => {
                     if (!isPlaying) return;
                     requestAnimationFrame(draw);
