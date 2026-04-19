@@ -3,63 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Waterfall Spectrogram</title>
+    <title>Noise Tuner & Visualizer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         
+        /* 操作パネル（中央配置） */
+        .controls {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 25px;
+            background: rgba(0, 0, 0, 0.4); padding: 30px; border-radius: 30px; backdrop-filter: blur(8px);
+        }
+
         button { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;
-            width: 80px; height: 80px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
-            background: #000000; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
-            transition: all 0.5s ease; outline: none;
+            width: 70px; height: 70px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
+            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none;
         }
-        button.active { background: #e74c3c; transform: translate(-50%, -50%) scale(0.85); box-shadow: 0 0 30px rgba(231, 76, 60, 0.6); }
+        button.active { background: #e74c3c; border-color: #e74c3c; box-shadow: 0 0 25px rgba(231, 76, 60, 0.6); transform: scale(0.9); }
 
-        /* --- テキストロゴ用のスタイル --- */
+        /* スライダーのデザイン */
+        input[type=range] { width: 180px; cursor: pointer; accent-color: #e74c3c; }
+        .label { color: white; font-size: 10px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; }
+
+        /* 下部のロゴ */
         .logo-container {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 5;
-            color: white;
-            text-align: center;
-            white-space: nowrap; /* 改行を防ぐ */
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            z-index: 5; color: white; text-align: center; white-space: nowrap;
         }
-
-        .logo-text {
-            font-size: 14px;
-            font-weight: 300; /* 細めのウェイトで高級感を出す */
-            letter-spacing: 0.3em; /* 文字の間隔を広く */
-            opacity: 0.7;
-            text-transform: uppercase; /* すべて大文字に */
-        }
-
-        /* 丸いシンボルの再現 */
-        .logo-symbol {
-            display: inline-block;
-            vertical-align: middle;
-            width: 12px;
-            height: 12px;
-            background-color: white;
-            border-radius: 50%;
-            margin-left: 10px;
-            margin-right: 5px;
-        }
-        .logo-symbol-outline {
-            display: inline-block;
-            vertical-align: middle;
-            width: 10px;
-            height: 10px;
-            border: 1px solid white;
-            border-radius: 50%;
-        }
+        .logo-text { font-size: 13px; font-weight: 300; letter-spacing: 0.3em; opacity: 0.6; text-transform: uppercase; }
+        .logo-symbol { display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: white; border-radius: 50%; margin-left: 10px; margin-right: 5px; }
+        .logo-symbol-outline { display: inline-block; vertical-align: middle; width: 8px; height: 8px; border: 1px solid white; border-radius: 50%; }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    <button id="btn"></button>
+    
+    <div class="controls">
+        <div class="label">Color Filter</div>
+        <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
+        <button id="btn"></button>
+    </div>
 
     <div class="logo-container">
         <div class="logo-text">
@@ -68,15 +51,21 @@
     </div>
 
     <script>
-        // --- JavaScript部分は変更なし（以前と同じ） ---
         let audioCtx;
         let scriptNode;
         let gainNode;
         let analyserNode;
         let lastOut = 0;
+        let filterWeight = 0.9;
+
         const btn = document.getElementById('btn');
+        const range = document.getElementById('filterRange');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
+
+        range.addEventListener('input', (e) => {
+            filterWeight = parseFloat(e.target.value);
+        });
 
         function resize() {
             canvas.width = window.innerWidth / 2;
@@ -124,7 +113,7 @@
                     const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
                     for (let i = 0; i < outputData.length; i++) {
                         const white = Math.random() * 2 - 1;
-                        const brown = (lastOut * 0.9) + (white * 0.1);
+                        const brown = (lastOut * filterWeight) + (white * (1 - filterWeight));
                         outputData[i] = brown;
                         lastOut = brown;
                     }
