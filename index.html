@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ambient Master Mixer</title>
+    <title>Zoomed Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -26,7 +26,7 @@
         .slider-item { display: flex; flex-direction: column; gap: 3px; }
         
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
-        .label { color: white; font-size: 8px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
+        .label { color: white; font-size: 9px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
 
         /* ロゴ */
         .logo-container {
@@ -114,7 +114,7 @@
             for (let c = 0; c < 2; c++) {
                 const d = buf.getChannelData(c);
                 for (let i = 0; i < len; i++) {
-                    d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
+                    d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 4);
                 }
             }
             const node = audioCtx.createConvolver();
@@ -125,16 +125,19 @@
         function playMarimba() {
             if (!isPlaying) return;
             const now = audioCtx.currentTime;
+            // よりアンビエントな音階（C Major Pentatonic）
             const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
+            
+            // ピッチ・エンベロープ（アタック強化）
             osc.frequency.setValueAtTime(freq * 4, now);
             osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
 
-            // 打撃音
+            // 打撃音（ノイズ）
             const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate);
             const nd = noiseBuf.getChannelData(0);
             for (let i = 0; i < noiseBuf.length; i++) nd[i] = Math.random() * 0.5;
@@ -170,10 +173,7 @@
                 btn.classList.remove('active');
                 if(noiseGain) noiseGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
                 if(marimbaMasterGain) marimbaMasterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
-                setTimeout(() => { 
-                    if(scriptNode) scriptNode.disconnect();
-                    isPlaying = false;
-                }, 600);
+                setTimeout(() => { if(scriptNode) scriptNode.disconnect(); analyser && analyser.disconnect(); scriptNode = null; }, 600);
             } else {
                 isPlaying = true;
                 btn.classList.add('active');
@@ -209,15 +209,28 @@
                 reverbNode.connect(reverbGain);
                 reverbGain.connect(analyser); // ウェット
 
-                analyser.connect(audioCtx.destination);
+                analyser.connect(audioCtx.destination); // ここでスピーカーに接続（全帯域）
 
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                // --- 【修正ポイント】描画範囲の計算 ---
+                const nyquist = audioCtx.sampleRate / 2; // ナイキスト周波数（例: 22050Hz）
+                const maxFreqToDraw = 4000; // 描画したい最大周波数 (Hz)
+                const maxIndexToDraw = Math.floor((maxFreqToDraw / nyquist) * dataArray.length);
+
                 const draw = () => {
                     if (!isPlaying) return;
                     requestAnimationFrame(draw);
                     analyser.getByteFrequencyData(dataArray);
+                    
                     for (let i = 0; i < canvas.width; i++) {
-                        const val = dataArray[Math.floor((i / canvas.width) * dataArray.length)];
+                        // 【ここが重要！】
+                        // 画面の横幅(i / canvas.width)を、全データ（dataArray.length）ではなく、
+                        // 0〜4000Hzに対応するインデックス（maxIndexToDraw）にマッピングする
+                        const ratio = i / canvas.width;
+                        const audioIdx = Math.floor(ratio * maxIndexToDraw);
+                        
+                        const val = dataArray[audioIdx];
                         let r = 0, g = 0, b = 0;
                         if (val < 128) { r = val * 2; }
                         else if (val < 192) { r = 255; g = (val - 128) * 4; }
