@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Waterfall Spectrogram</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         
         button { 
@@ -16,23 +16,44 @@
         }
         button.active { background: #e74c3c; transform: translate(-50%, -50%) scale(0.85); box-shadow: 0 0 30px rgba(231, 76, 60, 0.6); }
 
-        /* --- ロゴ配置用のスタイル --- */
+        /* --- テキストロゴ用のスタイル --- */
         .logo-container {
             position: absolute;
-            bottom: 30px; /* 画面下部からの距離を少し広げました */
+            bottom: 40px;
             left: 50%;
-            transform: translateX(-50%); /* 中央寄せ */
+            transform: translateX(-50%);
             z-index: 5;
-            width: 80%; /* スマホに合わせて幅を調整 */
-            max-width: 350px; /* PCなどでは大きくなりすぎないように */
+            color: white;
             text-align: center;
+            white-space: nowrap; /* 改行を防ぐ */
         }
 
-        .logo-container img {
-            width: 100%;
-            height: auto;
-            /* 画像自体が白いので、invertフィルタは削除しました */
-            opacity: 0.8; /* 少し透けさせてノイズになじませる */
+        .logo-text {
+            font-size: 14px;
+            font-weight: 300; /* 細めのウェイトで高級感を出す */
+            letter-spacing: 0.3em; /* 文字の間隔を広く */
+            opacity: 0.7;
+            text-transform: uppercase; /* すべて大文字に */
+        }
+
+        /* 丸いシンボルの再現 */
+        .logo-symbol {
+            display: inline-block;
+            vertical-align: middle;
+            width: 12px;
+            height: 12px;
+            background-color: white;
+            border-radius: 50%;
+            margin-left: 10px;
+            margin-right: 5px;
+        }
+        .logo-symbol-outline {
+            display: inline-block;
+            vertical-align: middle;
+            width: 10px;
+            height: 10px;
+            border: 1px solid white;
+            border-radius: 50%;
         }
     </style>
 </head>
@@ -41,11 +62,13 @@
     <button id="btn"></button>
 
     <div class="logo-container">
-        <img src="image_5.png" alt="DESIGNED BY">
+        <div class="logo-text">
+            DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span>
+        </div>
     </div>
 
     <script>
-        // --- (ここから下のJavaScriptは以前と同じです) ---
+        // --- JavaScript部分は変更なし（以前と同じ） ---
         let audioCtx;
         let scriptNode;
         let gainNode;
@@ -93,7 +116,6 @@
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 gainNode = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
-                
                 analyserNode.fftSize = 2048;
                 const bufferLength = analyserNode.frequencyBinCount;
                 const dataArray = new Uint8Array(bufferLength);
@@ -111,7 +133,6 @@
                 scriptNode.connect(gainNode);
                 gainNode.connect(analyserNode);
                 analyserNode.connect(audioCtx.destination);
-                
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
