@@ -19,21 +19,20 @@
         /* --- ロゴ配置用のスタイル --- */
         .logo-container {
             position: absolute;
-            bottom: 20px; /* 画面下部からの距離 */
+            bottom: 30px; /* 画面下部からの距離を少し広げました */
             left: 50%;
             transform: translateX(-50%); /* 中央寄せ */
-            z-index: 5; /* ボタンよりは下、キャンバスよりは上 */
+            z-index: 5;
             width: 80%; /* スマホに合わせて幅を調整 */
-            max-width: 300px; /* PCなどでは大きくなりすぎないように */
+            max-width: 350px; /* PCなどでは大きくなりすぎないように */
             text-align: center;
         }
 
         .logo-container img {
             width: 100%;
             height: auto;
-            /* 【ここがポイント！】黒を白に反転させるCSSフィルタ */
-            filter: invert(1); 
-            opacity: 0.7; /* 少し透けさせてノイズになじませる */
+            /* 画像自体が白いので、invertフィルタは削除しました */
+            opacity: 0.8; /* 少し透けさせてノイズになじませる */
         }
     </style>
 </head>
@@ -42,7 +41,7 @@
     <button id="btn"></button>
 
     <div class="logo-container">
-        <img src="image_4.png" alt="DESIGNED BY">
+        <img src="image_5.png" alt="DESIGNED BY">
     </div>
 
     <script>
