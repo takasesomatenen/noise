@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wavy Ambient Mixer</title>
+    <title>Dynamic Wavy Ambient</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -38,11 +38,11 @@
         <div class="slider-group">
             <div class="slider-item">
                 <div class="label">Noise Color (Base)</div>
-                <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
+                <input type="range" id="filterRange" min="0.1" max="0.95" step="0.01" value="0.8">
             </div>
             <div class="slider-item">
-                <div class="label">Wavy (Auto Modulation)</div>
-                <input type="range" id="wavyRange" min="0" max="1" step="0.01" value="0.3">
+                <div class="label">Wavy (Auto Sweep)</div>
+                <input type="range" id="wavyRange" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-item">
                 <div class="label">Noise Volume</div>
@@ -68,8 +68,11 @@
 
     <script>
         let audioCtx, scriptNode, noiseGain, marimbaMasterGain, reverbNode, reverbGain, analyser;
-        let lastOut = 0, baseFilterWeight = 0.9, wavyWeight = 0.3, isPlaying = false, marimbaTimer;
-        let lfoPhase = 0; // 波の位相
+        let lastOut = 0, baseFilterWeight = 0.8, wavyWeight = 0.5, isPlaying = false, marimbaTimer;
+        let currentVisualFilter = 0.8; // 描画に使う現在のリアルタイムなフィルター値
+        
+        // Wavy用の複数の位相
+        let phase1 = 0, phase2 = 0;
 
         const btn = document.getElementById('btn');
         const filterRange = document.getElementById('filterRange');
@@ -187,18 +190,22 @@
 
                 scriptNode.onaudioprocess = (e) => {
                     const out = e.outputBuffer.getChannelData(0);
-                    // LFOの進行（ゆっくりした波）
-                    // wavyWeightに応じて速度と振幅を変える
-                    const lfoSpeed = 0.0001 * (1 + wavyWeight * 2); 
-                    lfoPhase += lfoSpeed;
                     
-                    // サイン波をベースに、少しだけランダムな揺らぎを加える
-                    const waveMod = Math.sin(lfoPhase * 2 * Math.PI) * (wavyWeight * 0.15);
-                    const currentFilter = Math.max(0.01, Math.min(0.99, baseFilterWeight + waveMod));
+                    // Wavyの計算: 2つの異なる速度のサイン波を合成して複雑な動きを作る
+                    // 速度はwavyWeightに比例させる
+                    phase1 += 0.0002 * (0.5 + wavyWeight);
+                    phase2 += 0.00035 * (0.5 + wavyWeight);
+                    
+                    // 揺れ幅もwavyWeightに比例させる。最大で±0.3程度の変動
+                    const mod = (Math.sin(phase1) + Math.sin(phase2 * 0.8)) * (wavyWeight * 0.2);
+                    
+                    // 現在のColor値を更新
+                    currentVisualFilter = Math.max(0.05, Math.min(0.98, baseFilterWeight + mod));
 
                     for (let i = 0; i < out.length; i++) {
                         const w = Math.random() * 2 - 1;
-                        const b = (lastOut * currentFilter) + (w * (1 - currentFilter));
+                        // フィルターを適用
+                        const b = (lastOut * currentVisualFilter) + (w * (1 - currentVisualFilter));
                         out[i] = b;
                         lastOut = b;
                     }
