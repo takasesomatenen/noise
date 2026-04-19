@@ -3,133 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dynamic Noise Tuner</title>
+    <title>Waterfall Spectrogram</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
+        body { margin: 0; overflow: hidden; background: #000; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
-        .controls {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px;
-            background: rgba(0, 0, 0, 0.85); padding: 25px; border-radius: 30px; backdrop-filter: blur(20px);
-            width: 260px; border: 1px solid rgba(255,255,255,0.15);
-        }
-        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 4px; }
-        .label { font-size: 10px; letter-spacing: 2px; font-weight: bold; opacity: 0.6; text-align: center; }
-        input[type=range] { width: 100%; cursor: pointer; accent-color: #e74c3c; margin: 8px 0; }
+        
         button { 
-            width: 55px; height: 55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
-            background: #000; cursor: pointer; transition: 0.3s; margin-top: 5px;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;
+            width: 80px; height: 80px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
+            background: #000000; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+            transition: all 0.5s ease; outline: none;
         }
-        button.active { background: #e74c3c; box-shadow: 0 0 20px rgba(231, 76, 60, 0.6); }
+        button.active { background: #e74c3c; transform: translate(-50%, -50%) scale(0.85); box-shadow: 0 0 30px rgba(231, 76, 60, 0.6); }
+
+        /* --- ロゴ配置用のスタイル --- */
+        .logo-container {
+            position: absolute;
+            bottom: 20px; /* 画面下部からの距離 */
+            left: 50%;
+            transform: translateX(-50%); /* 中央寄せ */
+            z-index: 5; /* ボタンよりは下、キャンバスよりは上 */
+            width: 80%; /* スマホに合わせて幅を調整 */
+            max-width: 300px; /* PCなどでは大きくなりすぎないように */
+            text-align: center;
+        }
+
+        .logo-container img {
+            width: 100%;
+            height: auto;
+            /* 【ここがポイント！】黒を白に反転させるCSSフィルタ */
+            filter: invert(1); 
+            opacity: 0.7; /* 少し透けさせてノイズになじませる */
+        }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    <div class="controls">
-        <div class="slider-group"><div class="label">BASE HUM (背景の持続音)</div><input type="range" id="baseRange" min="0" max="1" step="0.01" value="0.2"></div>
-        <div class="slider-group"><div class="label">DENSITY (粒から砂嵐へ)</div><input type="range" id="densityRange" min="0" max="1" step="0.01" value="0.1"></div>
-        <button id="btn"></button>
+    <button id="btn"></button>
+
+    <div class="logo-container">
+        <img src="image_4.png" alt="DESIGNED BY">
     </div>
 
     <script>
-        let audioCtx, scriptNode, gainNode, analyserNode;
-        let lastOut = 0, pLastOut = 0;
-        
-        // スライダーの値を直接保持
-        const config = {
-            base: 0.2,
-            density: 0.1
-        };
-
+        // --- (ここから下のJavaScriptは以前と同じです) ---
+        let audioCtx;
+        let scriptNode;
+        let gainNode;
+        let analyserNode;
+        let lastOut = 0;
         const btn = document.getElementById('btn');
         const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d', { alpha: false });
+        const ctx = canvas.getContext('2d');
 
-        document.getElementById('baseRange').oninput = (e) => config.base = parseFloat(e.target.value);
-        document.getElementById('densityRange').oninput = (e) => config.density = parseFloat(e.target.value);
-
-        function resize() { canvas.width = window.innerWidth / 2; canvas.height = window.innerHeight / 2; }
+        function resize() {
+            canvas.width = window.innerWidth / 2;
+            canvas.height = window.innerHeight / 2;
+        }
         window.addEventListener('resize', resize);
         resize();
 
-        async function toggleNoise() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
+        let imgData, tempCanvas, tempCtx;
+        function prepareImageData() {
+            imgData = ctx.createImageData(canvas.width, 1);
+            tempCanvas = document.createElement('canvas');
+            tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+        }
+        prepareImageData();
+
+        btn.addEventListener('click', () => {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
 
             if (scriptNode) {
-                gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                const fadeTime = 0.5;
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fadeTime);
                 btn.classList.remove('active');
-                setTimeout(() => { if(scriptNode){ scriptNode.disconnect(); scriptNode = null; } }, 500);
+                setTimeout(() => {
+                    if (scriptNode) {
+                        scriptNode.disconnect();
+                        analyserNode.disconnect();
+                        scriptNode = null;
+                        analyserNode = null;
+                    }
+                }, fadeTime * 1000);
             } else {
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 gainNode = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
+                
                 analyserNode.fftSize = 2048;
+                const bufferLength = analyserNode.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
 
-                scriptNode.onaudioprocess = (e) => {
-                    const out = e.outputBuffer.getChannelData(0);
-                    let lOut = lastOut, plOut = pLastOut;
-                    
-                    for (let i = 0; i < out.length; i++) {
-                        // 1. 背景の持続音
-                        const w = Math.random() * 2 - 1;
-                        const b = (lOut * 0.95) + (w * 0.05);
-                        lOut = b;
-
-                        // 2. パルス（DENSITYを上げると連続的な砂嵐へ）
-                        let pulse = 0;
-                        // config.densityが大きくなると、ほぼ毎サンプル音が鳴るようになる
-                        if (Math.random() < config.density) {
-                            pulse = (Math.random() * 2 - 1);
-                        }
-                        
-                        // DENSITYが高いときはパルスを滑らかにしすぎない（砂嵐の質感を出す）
-                        const smooth = 0.9 - (config.density * 0.5);
-                        plOut = (plOut * smooth) + (pulse * (1 - smooth));
-
-                        // 最終出力
-                        out[i] = (b * config.base * 0.5) + (plOut * 0.8);
+                scriptNode.onaudioprocess = (audioProcessingEvent) => {
+                    const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
+                    for (let i = 0; i < outputData.length; i++) {
+                        const white = Math.random() * 2 - 1;
+                        const brown = (lastOut * 0.9) + (white * 0.1);
+                        outputData[i] = brown;
+                        lastOut = brown;
                     }
-                    lastOut = lOut; pLastOut = plOut;
                 };
 
-                scriptNode.connect(analyserNode);
-                analyserNode.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-
+                scriptNode.connect(gainNode);
+                gainNode.connect(analyserNode);
+                analyserNode.connect(audioCtx.destination);
+                
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
                 btn.classList.add('active');
+
+                function draw() {
+                    if (!analyserNode) return;
+                    requestAnimationFrame(draw);
+                    analyserNode.getByteFrequencyData(dataArray);
+                    for (let i = 0; i < canvas.width; i++) {
+                        const ratio = i / canvas.width;
+                        const audioIdx = Math.floor(ratio * bufferLength);
+                        const value = dataArray[audioIdx];
+                        let r, g, b;
+                        if (value < 128) {
+                            r = value * 2; g = 0; b = 0;
+                        } else if (value < 192) {
+                            r = 255; g = (value - 128) * 4; b = 0;
+                        } else {
+                            r = 255; g = 255; b = (value - 192) * 4;
+                        }
+                        const p = i * 4;
+                        imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
+                    }
+                    tempCtx.drawImage(canvas, 0, 0);
+                    ctx.drawImage(tempCanvas, 0, 1);
+                    ctx.putImageData(imgData, 0, 0);
+                }
                 draw();
             }
-        }
-
-        btn.addEventListener('click', toggleNoise);
-
-        function draw() {
-            if (!scriptNode) return;
-            requestAnimationFrame(draw);
-            const data = new Uint8Array(analyserNode.frequencyBinCount);
-            analyserNode.getByteFrequencyData(data);
-            const imgData = ctx.createImageData(canvas.width, 1);
-            
-            for (let i = 0; i < canvas.width; i++) {
-                const val = data[Math.floor((i / canvas.width) * data.length)];
-                const p = i * 4;
-                
-                // 映像も音の大きさにダイレクトに反応させる
-                // 背景音が大きく、密度が高いほど、画面が白っぽくなる
-                imgData.data[p] = val; // R
-                imgData.data[p+1] = val > 120 ? (val - 120) * 2 : 0; // G
-                imgData.data[p+2] = val > 200 ? (val - 200) * 5 : 0; // B
-                imgData.data[p+3] = 255;
-            }
-            const temp = document.createElement('canvas');
-            temp.width = canvas.width; temp.height = canvas.height;
-            temp.getContext('2d').drawImage(canvas, 0, 0);
-            ctx.drawImage(temp, 0, 1);
-            ctx.putImageData(imgData, 0, 0);
-        }
+        });
     </script>
 </body>
 </html>
