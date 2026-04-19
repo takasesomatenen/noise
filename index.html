@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dynamic Wavy Ambient</title>
+    <title>Deep Wave Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -22,13 +22,6 @@
         .slider-item { display: flex; flex-direction: column; gap: 2px; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
         .label { color: white; font-size: 8px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
-        .logo-container {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 5; color: white; text-align: center; white-space: nowrap;
-        }
-        .logo-text { font-size: 13px; font-weight: 300; letter-spacing: 0.3em; opacity: 0.6; text-transform: uppercase; }
-        .logo-symbol { display: inline-block; vertical-align: middle; width: 10px; height: 10px; background-color: white; border-radius: 50%; margin-left: 10px; margin-right: 5px; }
-        .logo-symbol-outline { display: inline-block; vertical-align: middle; width: 8px; height: 8px; border: 1px solid white; border-radius: 50%; }
     </style>
 </head>
 <body>
@@ -37,11 +30,11 @@
         <button id="btn"></button>
         <div class="slider-group">
             <div class="slider-item">
-                <div class="label">Noise Color (Base)</div>
-                <input type="range" id="filterRange" min="0.1" max="0.95" step="0.01" value="0.8">
+                <div class="label">Noise Color (Center)</div>
+                <input type="range" id="filterRange" min="0.2" max="0.8" step="0.01" value="0.7">
             </div>
             <div class="slider-item">
-                <div class="label">Wavy (Auto Sweep)</div>
+                <div class="label">Wavy Intensity (Auto Sweep)</div>
                 <input type="range" id="wavyRange" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-item">
@@ -62,17 +55,14 @@
             </div>
         </div>
     </div>
-    <div class="logo-container">
-        <div class="logo-text">DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span></div>
-    </div>
 
     <script>
         let audioCtx, scriptNode, noiseGain, marimbaMasterGain, reverbNode, reverbGain, analyser;
-        let lastOut = 0, baseFilterWeight = 0.8, wavyWeight = 0.5, isPlaying = false, marimbaTimer;
-        let currentVisualFilter = 0.8; // 描画に使う現在のリアルタイムなフィルター値
+        let lastOut = 0, baseFilterWeight = 0.7, wavyWeight = 0.5, isPlaying = false, marimbaTimer;
         
-        // Wavy用の複数の位相
-        let phase1 = 0, phase2 = 0;
+        // Wavy用の位相管理
+        let lfoPhase = 0;
+        let lfoDrift = 0;
 
         const btn = document.getElementById('btn');
         const filterRange = document.getElementById('filterRange');
@@ -88,9 +78,7 @@
 
         filterRange.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
         wavyRange.addEventListener('input', (e) => wavyWeight = parseFloat(e.target.value));
-        noiseVolRange.addEventListener('input', (e) => {
-            if (noiseGain) noiseGain.gain.setTargetAtTime(getNoiseGainValue(e.target.value), audioCtx.currentTime, 0.05);
-        });
+        noiseVolRange.addEventListener('input', (e) => noiseGain && noiseGain.gain.setTargetAtTime(getNoiseGainValue(e.target.value), audioCtx.currentTime, 0.05));
         marimbaVolRange.addEventListener('input', (e) => marimbaMasterGain && marimbaMasterGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
         reverbRange.addEventListener('input', (e) => reverbGain && reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
 
@@ -144,10 +132,8 @@
             ns.buffer = noiseBuf;
             const ng = audioCtx.createGain();
 
-            const sliderVal = parseInt(intervalRange.value);
-            const interval = 3100 - sliderVal;
-            const decayBase = freq < 300 ? 1.2 : 0.6;
-            const decay = Math.min(decayBase, (interval / 1000) + 0.1);
+            const interval = 3100 - parseInt(intervalRange.value);
+            const decay = Math.min(1.2, (interval / 1000) + 0.1);
 
             g.gain.setValueAtTime(0, now);
             g.gain.linearRampToValueAtTime(0.3, now + 0.005);
@@ -191,23 +177,25 @@
                 scriptNode.onaudioprocess = (e) => {
                     const out = e.outputBuffer.getChannelData(0);
                     
-                    // Wavyの計算: 2つの異なる速度のサイン波を合成して複雑な動きを作る
-                    // 速度はwavyWeightに比例させる
-                    phase1 += 0.0002 * (0.5 + wavyWeight);
-                    phase2 += 0.00035 * (0.5 + wavyWeight);
-                    
-                    // 揺れ幅もwavyWeightに比例させる。最大で±0.3程度の変動
-                    const mod = (Math.sin(phase1) + Math.sin(phase2 * 0.8)) * (wavyWeight * 0.2);
-                    
-                    // 現在のColor値を更新
-                    currentVisualFilter = Math.max(0.05, Math.min(0.98, baseFilterWeight + mod));
+                    // LFO計算 (秒間 0.1Hz 〜 0.3Hz 程度のゆっくりした動き)
+                    const sampleRate = audioCtx.sampleRate;
+                    const lfoIncr = (2 * Math.PI * (0.1 + wavyWeight * 0.2)) / sampleRate;
 
                     for (let i = 0; i < out.length; i++) {
-                        const w = Math.random() * 2 - 1;
-                        // フィルターを適用
-                        const b = (lastOut * currentVisualFilter) + (w * (1 - currentVisualFilter));
-                        out[i] = b;
-                        lastOut = b;
+                        lfoPhase += lfoIncr;
+                        // サイン波を少し複雑にするために、もう一つの微弱なサイン波(drift)を合成
+                        lfoDrift += lfoIncr * 0.37; 
+                        
+                        // 変動幅 0.3 (±0.15)
+                        const modulation = (Math.sin(lfoPhase) + 0.3 * Math.sin(lfoDrift)) * (wavyWeight * 0.15);
+                        
+                        // 最終的なフィルター値
+                        const currentFilter = Math.max(0.01, Math.min(0.99, baseFilterWeight + modulation));
+
+                        const white = Math.random() * 2 - 1;
+                        const brown = (lastOut * currentFilter) + (white * (1 - currentFilter));
+                        out[i] = brown;
+                        lastOut = brown;
                     }
                 };
 
@@ -220,18 +208,14 @@
                 analyser.connect(audioCtx.destination);
 
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                const nyquist = audioCtx.sampleRate / 2;
-                const maxFreqToDraw = 24000;
-                const maxIndexToDraw = Math.floor((maxFreqToDraw / nyquist) * dataArray.length);
+                const maxIndexToDraw = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dataArray.length);
 
                 const draw = () => {
                     if (!isPlaying) return;
                     requestAnimationFrame(draw);
                     analyser.getByteFrequencyData(dataArray);
                     for (let i = 0; i < canvas.width; i++) {
-                        const ratio = i / canvas.width;
-                        const audioIdx = Math.floor(ratio * maxIndexToDraw);
-                        const val = dataArray[audioIdx];
+                        const val = dataArray[Math.floor((i / canvas.width) * maxIndexToDraw)];
                         let r = 0, g = 0, b = 0;
                         if (val < 128) { r = val * 2; }
                         else if (val < 192) { r = 255; g = (val - 128) * 4; }
