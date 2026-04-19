@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wavy Speed Ambient Mixer</title>
+    <title>Organic Wave Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -30,16 +30,16 @@
         <button id="btn"></button>
         <div class="slider-group">
             <div class="slider-item">
-                <div class="label">Noise Color (Center)</div>
+                <div class="label">Noise Color (Base)</div>
                 <input type="range" id="filterRange" min="0.2" max="0.8" step="0.01" value="0.7">
             </div>
             <div class="slider-item">
-                <div class="label">Wavy (Width)</div>
-                <input type="range" id="wavyRange" min="0" max="1" step="0.01" value="0.5">
+                <div class="label">WAVE HEIGHT</div>
+                <input type="range" id="waveHeightRange" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-item">
-                <div class="label">Wave Speed</div>
-                <input type="range" id="waveSpeedRange" min="0" max="1" step="0.01" value="0.3">
+                <div class="label">WAVE WIDTH</div>
+                <input type="range" id="waveWidthRange" min="0" max="1" step="0.01" value="0.3">
             </div>
             <div class="slider-item">
                 <div class="label">Noise Volume</div>
@@ -62,15 +62,15 @@
 
     <script>
         let audioCtx, scriptNode, noiseGain, marimbaMasterGain, reverbNode, reverbGain, analyser;
-        let lastOut = 0, baseFilterWeight = 0.7, wavyWeight = 0.5, waveSpeed = 0.3, isPlaying = false, marimbaTimer;
+        let lastOut = 0, baseFilterWeight = 0.7, waveHeight = 0.5, waveWidth = 0.3, isPlaying = false, marimbaTimer;
         
-        let lfoPhase = 0;
-        let lfoDrift = 0;
+        // 有機的な揺らぎのための複数の位相
+        let phaseA = 0, phaseB = 0, phaseC = 0;
 
         const btn = document.getElementById('btn');
         const filterRange = document.getElementById('filterRange');
-        const wavyRange = document.getElementById('wavyRange');
-        const waveSpeedRange = document.getElementById('waveSpeedRange');
+        const waveHeightRange = document.getElementById('waveHeightRange');
+        const waveWidthRange = document.getElementById('waveWidthRange');
         const noiseVolRange = document.getElementById('noiseVolRange');
         const marimbaVolRange = document.getElementById('marimbaVolRange');
         const reverbRange = document.getElementById('reverbRange');
@@ -81,8 +81,8 @@
         const getNoiseGainValue = (val) => parseFloat(val) * 0.6;
 
         filterRange.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
-        wavyRange.addEventListener('input', (e) => wavyWeight = parseFloat(e.target.value));
-        waveSpeedRange.addEventListener('input', (e) => waveSpeed = parseFloat(e.target.value));
+        waveHeightRange.addEventListener('input', (e) => waveHeight = parseFloat(e.target.value));
+        waveWidthRange.addEventListener('input', (e) => waveWidth = parseFloat(e.target.value));
         noiseVolRange.addEventListener('input', (e) => noiseGain && noiseGain.gain.setTargetAtTime(getNoiseGainValue(e.target.value), audioCtx.currentTime, 0.05));
         marimbaVolRange.addEventListener('input', (e) => marimbaMasterGain && marimbaMasterGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
         reverbRange.addEventListener('input', (e) => reverbGain && reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
@@ -183,16 +183,22 @@
                     const out = e.outputBuffer.getChannelData(0);
                     const sampleRate = audioCtx.sampleRate;
                     
-                    // waveSpeedRangeに応じて寄せて返す速さを決定 (0.05Hz 〜 0.8Hz)
-                    const speedHz = 0.05 + (waveSpeed * 0.75);
-                    const lfoIncr = (2 * Math.PI * speedHz) / sampleRate;
+                    // waveWidthRange(周期の長さ)に応じた基準スピード
+                    const baseFreq = 0.05 + (waveWidth * 0.8);
+                    const incrA = (2 * Math.PI * baseFreq) / sampleRate;
+                    const incrB = (2 * Math.PI * baseFreq * 0.73) / sampleRate; // 非整数比で干渉させる
+                    const incrC = (2 * Math.PI * baseFreq * 1.41) / sampleRate;
 
                     for (let i = 0; i < out.length; i++) {
-                        lfoPhase += lfoIncr;
-                        lfoDrift += lfoIncr * 0.37; 
+                        phaseA += incrA;
+                        phaseB += incrB;
+                        phaseC += incrC;
                         
-                        // wavyWeight(Width) は変動幅にのみ作用
-                        const modulation = (Math.sin(lfoPhase) + 0.3 * Math.sin(lfoDrift)) * (wavyWeight * 0.15);
+                        // 3つの波を合成してランダムなうねりを作る
+                        // waveHeightRange(波の高さ)を振幅に適用
+                        const rawMod = (Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8;
+                        const modulation = rawMod * (waveHeight * 0.25); 
+
                         const currentFilter = Math.max(0.01, Math.min(0.99, baseFilterWeight + modulation));
 
                         const white = Math.random() * 2 - 1;
