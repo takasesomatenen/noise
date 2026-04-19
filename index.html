@@ -50,7 +50,8 @@
             </div>
             <div class="slider-item">
                 <div class="label">Melody Density (Slow - Fast)</div>
-                <input type="range" id="intervalRange" min="100" max="3000" step="50" value="1000">
+                <!-- min(Slow)を3000ms、max(Fast)を100msに設定 -->
+                <input type="range" id="intervalRange" min="100" max="3000" step="50" value="2000">
             </div>
         </div>
     </div>
@@ -99,7 +100,6 @@
         function playMarimba() {
             if (!isPlaying) return;
             const now = audioCtx.currentTime;
-            // よりアンビエントな音階（C Major Pentatonic）
             const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
@@ -108,8 +108,10 @@
             osc.type = 'sine';
             osc.frequency.setValueAtTime(freq, now);
 
-            // 高密度な時はDecayも短くして歯切れを良くする
-            const currentInterval = parseInt(intervalRange.value);
+            // スライダーの値(ms)を直接取得（右にいくほど値が小さくなるよう計算）
+            const sliderVal = parseInt(intervalRange.value);
+            const currentInterval = 3100 - sliderVal; // 反転させて右側を高速(100ms)に
+
             const decayTime = Math.min(0.8, (currentInterval / 1000) + 0.1);
 
             noteGain.gain.setValueAtTime(0, now);
@@ -121,8 +123,6 @@
             osc.start(now);
             osc.stop(now + decayTime + 0.1);
 
-            // スライダー 100(Fast) = 0.1秒間隔 / 3000(Slow) = 3秒間隔
-            // ランダム要素（±20%程度）を加えて機械感を減らす
             const randomJitter = (Math.random() * 0.4 + 0.8); 
             const nextTime = currentInterval * randomJitter;
             
