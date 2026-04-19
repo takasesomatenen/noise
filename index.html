@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Deep Wave Ambient Mixer</title>
+    <title>Wavy Speed Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
-            background: rgba(0, 0, 0, 0.6); padding: 20px; border-radius: 30px; backdrop-filter: blur(10px);
-            min-width: 240px; border: 1px solid rgba(255,255,255,0.1);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 7px;
+            background: rgba(0, 0, 0, 0.6); padding: 18px; border-radius: 30px; backdrop-filter: blur(10px);
+            min-width: 250px; border: 1px solid rgba(255,255,255,0.1);
         }
         button { 
-            width: 55px; height: 55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
+            width: 50px; height: 50px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
             background: #000; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
         }
         button.active { background: #4ca1af; border-color: #4ca1af; box-shadow: 0 0 25px rgba(76, 161, 175, 0.6); transform: scale(0.9); }
-        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 5px; }
         .slider-item { display: flex; flex-direction: column; gap: 2px; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
         .label { color: white; font-size: 8px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
@@ -34,8 +34,12 @@
                 <input type="range" id="filterRange" min="0.2" max="0.8" step="0.01" value="0.7">
             </div>
             <div class="slider-item">
-                <div class="label">Wavy Intensity (Auto Sweep)</div>
+                <div class="label">Wavy (Width)</div>
                 <input type="range" id="wavyRange" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            <div class="slider-item">
+                <div class="label">Wave Speed</div>
+                <input type="range" id="waveSpeedRange" min="0" max="1" step="0.01" value="0.3">
             </div>
             <div class="slider-item">
                 <div class="label">Noise Volume</div>
@@ -58,15 +62,15 @@
 
     <script>
         let audioCtx, scriptNode, noiseGain, marimbaMasterGain, reverbNode, reverbGain, analyser;
-        let lastOut = 0, baseFilterWeight = 0.7, wavyWeight = 0.5, isPlaying = false, marimbaTimer;
+        let lastOut = 0, baseFilterWeight = 0.7, wavyWeight = 0.5, waveSpeed = 0.3, isPlaying = false, marimbaTimer;
         
-        // Wavy用の位相管理
         let lfoPhase = 0;
         let lfoDrift = 0;
 
         const btn = document.getElementById('btn');
         const filterRange = document.getElementById('filterRange');
         const wavyRange = document.getElementById('wavyRange');
+        const waveSpeedRange = document.getElementById('waveSpeedRange');
         const noiseVolRange = document.getElementById('noiseVolRange');
         const marimbaVolRange = document.getElementById('marimbaVolRange');
         const reverbRange = document.getElementById('reverbRange');
@@ -78,6 +82,7 @@
 
         filterRange.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
         wavyRange.addEventListener('input', (e) => wavyWeight = parseFloat(e.target.value));
+        waveSpeedRange.addEventListener('input', (e) => waveSpeed = parseFloat(e.target.value));
         noiseVolRange.addEventListener('input', (e) => noiseGain && noiseGain.gain.setTargetAtTime(getNoiseGainValue(e.target.value), audioCtx.currentTime, 0.05));
         marimbaVolRange.addEventListener('input', (e) => marimbaMasterGain && marimbaMasterGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
         reverbRange.addEventListener('input', (e) => reverbGain && reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
@@ -176,20 +181,18 @@
 
                 scriptNode.onaudioprocess = (e) => {
                     const out = e.outputBuffer.getChannelData(0);
-                    
-                    // LFO計算 (秒間 0.1Hz 〜 0.3Hz 程度のゆっくりした動き)
                     const sampleRate = audioCtx.sampleRate;
-                    const lfoIncr = (2 * Math.PI * (0.1 + wavyWeight * 0.2)) / sampleRate;
+                    
+                    // waveSpeedRangeに応じて寄せて返す速さを決定 (0.05Hz 〜 0.8Hz)
+                    const speedHz = 0.05 + (waveSpeed * 0.75);
+                    const lfoIncr = (2 * Math.PI * speedHz) / sampleRate;
 
                     for (let i = 0; i < out.length; i++) {
                         lfoPhase += lfoIncr;
-                        // サイン波を少し複雑にするために、もう一つの微弱なサイン波(drift)を合成
                         lfoDrift += lfoIncr * 0.37; 
                         
-                        // 変動幅 0.3 (±0.15)
+                        // wavyWeight(Width) は変動幅にのみ作用
                         const modulation = (Math.sin(lfoPhase) + 0.3 * Math.sin(lfoDrift)) * (wavyWeight * 0.15);
-                        
-                        // 最終的なフィルター値
                         const currentFilter = Math.max(0.01, Math.min(0.99, baseFilterWeight + modulation));
 
                         const white = Math.random() * 2 - 1;
