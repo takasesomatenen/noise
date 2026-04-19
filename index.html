@@ -3,22 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ambient Noise Layer</title>
+    <title>Ambient Layer Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
+        
+        /* 操作パネルの調整 */
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 25px;
-            background: rgba(0, 0, 0, 0.4); padding: 30px; border-radius: 30px; backdrop-filter: blur(8px);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 20px;
+            background: rgba(0, 0, 0, 0.5); padding: 30px; border-radius: 30px; backdrop-filter: blur(10px);
+            min-width: 220px;
         }
+
         button { 
             width: 70px; height: 70px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
-            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none;
+            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 10px;
         }
         button.active { background: #4ca1af; border-color: #4ca1af; box-shadow: 0 0 25px rgba(76, 161, 175, 0.6); transform: scale(0.9); }
-        input[type=range] { width: 180px; cursor: pointer; accent-color: #4ca1af; }
-        .label { color: white; font-size: 10px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; }
+
+        /* スライダー群のレイアウト */
+        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 15px; }
+        .slider-item { display: flex; flex-direction: column; gap: 5px; }
+        
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
+        .label { color: white; font-size: 9px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
+
+        /* 下部のロゴ */
         .logo-container {
             position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
             z-index: 5; color: white; text-align: center; white-space: nowrap;
@@ -30,26 +41,53 @@
 </head>
 <body>
     <canvas id="visualizer"></canvas>
+    
     <div class="controls">
-        <div class="label">Color Filter</div>
-        <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
         <button id="btn"></button>
+        
+        <div class="slider-group">
+            <div class="slider-item">
+                <div class="label">Noise Color</div>
+                <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
+            </div>
+            
+            <div class="slider-item">
+                <div class="label">Noise Volume</div>
+                <input type="range" id="noiseVolRange" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            
+            <div class="slider-item">
+                <div class="label">Melody Volume</div>
+                <input type="range" id="marimbaVolRange" min="0" max="1" step="0.01" value="0.3">
+            </div>
+        </div>
     </div>
+
     <div class="logo-container">
         <div class="logo-text">DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span></div>
     </div>
 
     <script>
-        let audioCtx, scriptNode, gainNode, analyserNode;
+        let audioCtx, scriptNode, noiseGainNode, marimbaMasterGain, analyserNode;
         let lastOut = 0;
         let filterWeight = 0.9;
         let isPlaying = false;
+
         const btn = document.getElementById('btn');
-        const range = document.getElementById('filterRange');
+        const filterRange = document.getElementById('filterRange');
+        const noiseVolRange = document.getElementById('noiseVolRange');
+        const marimbaVolRange = document.getElementById('marimbaVolRange');
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
 
-        range.addEventListener('input', (e) => filterWeight = parseFloat(e.target.value));
+        // リアルタイムでの値反映
+        filterRange.addEventListener('input', (e) => filterWeight = parseFloat(e.target.value));
+        noiseVolRange.addEventListener('input', (e) => {
+            if (noiseGainNode) noiseGainNode.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05);
+        });
+        marimbaVolRange.addEventListener('input', (e) => {
+            if (marimbaMasterGain) marimbaMasterGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05);
+        });
 
         function resize() {
             canvas.width = window.innerWidth / 2;
@@ -68,35 +106,30 @@
         }
         prepareImageData();
 
-        // マリンバの音を合成して鳴らす関数
         function playMarimba() {
             if (!isPlaying) return;
-
             const now = audioCtx.currentTime;
-            // 琉球音階やペンタトニカルな周波数リスト
             const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
-            // メインのサイン波
             const osc = audioCtx.createOscillator();
-            const marimbaGain = audioCtx.createGain();
+            const noteGain = audioCtx.createGain();
             
             osc.type = 'sine';
             osc.frequency.setValueAtTime(freq, now);
 
-            // エンベロープ: 叩いた瞬間に最大、すぐ消える
-            marimbaGain.gain.setValueAtTime(0, now);
-            marimbaGain.gain.linearRampToValueAtTime(0.2, now + 0.01); 
-            marimbaGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+            noteGain.gain.setValueAtTime(0, now);
+            noteGain.gain.linearRampToValueAtTime(0.5, now + 0.01); 
+            noteGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
 
-            osc.connect(marimbaGain);
-            marimbaGain.connect(analyserNode); // アナライザーに繋ぐことで波形が出る
+            osc.connect(noteGain);
+            // 個別の音量調整用ノード(marimbaMasterGain)に接続
+            noteGain.connect(marimbaMasterGain);
             
             osc.start(now);
-            osc.stop(now + 0.6);
+            osc.stop(now + 1.0);
 
-            // 次の音を鳴らすタイミングをランダムに決定（0.5秒〜3秒の間）
-            setTimeout(playMarimba, 500 + Math.random() * 2500);
+            setTimeout(playMarimba, 800 + Math.random() * 3000);
         }
 
         btn.addEventListener('click', () => {
@@ -104,25 +137,30 @@
 
             if (isPlaying) {
                 isPlaying = false;
-                const fadeTime = 0.5;
-                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fadeTime);
                 btn.classList.remove('active');
+                noiseGainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+                marimbaMasterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
                 setTimeout(() => {
                     if (scriptNode) {
                         scriptNode.disconnect();
                         analyserNode.disconnect();
                         scriptNode = null;
-                        analyserNode = null;
                     }
-                }, fadeTime * 1000);
+                }, 600);
             } else {
                 isPlaying = true;
+                btn.classList.add('active');
+
+                // ノード作成
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
-                gainNode = audioCtx.createGain();
+                noiseGainNode = audioCtx.createGain();
+                marimbaMasterGain = audioCtx.createGain();
                 analyserNode = audioCtx.createAnalyser();
                 analyserNode.fftSize = 2048;
-                const bufferLength = analyserNode.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
+
+                // スライダーの初期値を反映
+                noiseGainNode.gain.value = parseFloat(noiseVolRange.value);
+                marimbaMasterGain.gain.value = parseFloat(marimbaVolRange.value);
 
                 scriptNode.onaudioprocess = (e) => {
                     const outputData = e.outputBuffer.getChannelData(0);
@@ -134,16 +172,17 @@
                     }
                 };
 
-                scriptNode.connect(gainNode);
-                gainNode.connect(analyserNode);
+                // 接続
+                scriptNode.connect(noiseGainNode);
+                noiseGainNode.connect(analyserNode);
+                marimbaMasterGain.connect(analyserNode);
                 analyserNode.connect(audioCtx.destination);
-                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
-                btn.classList.add('active');
 
-                // 描画ループ
+                // 描画
+                const bufferLength = analyserNode.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
                 const draw = () => {
-                    if (!analyserNode) return;
+                    if (!isPlaying) return;
                     requestAnimationFrame(draw);
                     analyserNode.getByteFrequencyData(dataArray);
                     for (let i = 0; i < canvas.width; i++) {
@@ -162,7 +201,7 @@
                     ctx.putImageData(imgData, 0, 0);
                 }
                 draw();
-                playMarimba(); // マリンバ開始
+                playMarimba();
             }
         });
     </script>
