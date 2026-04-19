@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Balanced Ambient Mixer</title>
+    <title>Full Band Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -195,7 +195,7 @@
                     }
                 };
 
-                // 接続（スピーカーへは全帯域を送る）
+                // 接続
                 scriptNode.connect(noiseGain);
                 noiseGain.connect(analyser);
                 marimbaMasterGain.connect(analyser);
@@ -207,8 +207,8 @@
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 const nyquist = audioCtx.sampleRate / 2;
                 
-                // --- 【修正ポイント】描画範囲を8,000Hzに ---
-                const maxFreqToDraw = 8000; // 以前の4000Hzから倍に
+                // --- 【修正ポイント】描画範囲を24,000Hz（ほぼ全帯域）に ---
+                const maxFreqToDraw = 24000; // 以前の8,000Hzから3倍に
                 const maxIndexToDraw = Math.floor((maxFreqToDraw / nyquist) * dataArray.length);
 
                 const draw = () => {
