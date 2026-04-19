@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>High-Pitch Ambient Mixer</title>
+    <title>Full Range Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -102,7 +102,7 @@
         prepareImageData();
 
         function createReverb() {
-            const len = audioCtx.sampleRate * 3;
+            const len = audioCtx.sampleRate * 4; // 残響を少し長く
             const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
             for (let c = 0; c < 2; c++) {
                 const d = buf.getChannelData(c);
@@ -119,20 +119,29 @@
             if (!isPlaying) return;
             const now = audioCtx.currentTime;
             
-            // 【修正】音階自体を2オクターブ上げました (元の周波数の4倍)
-            // 1046Hz(C6) 〜 2637Hz(E7) あたりのキラキラした音域です
-            const scale = [1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00, 2349.32, 2637.02]; 
+            // 4オクターブにまたがる広大な音階 (C3 から C7+)
+            const scale = [
+                // Octave -1 (C3帯)
+                130.81, 146.83, 164.81, 196.00, 220.00,
+                // Octave 0 (C4帯 - 当初基準)
+                261.63, 293.66, 329.63, 392.00, 440.00,
+                // Octave 1 (C5帯)
+                523.25, 587.33, 659.25, 783.99, 880.00,
+                // Octave 2 (C6帯)
+                1046.50, 1174.66, 1318.51, 1567.98, 1760.00,
+                // Octave 3 (C7帯)
+                2093.00, 2349.32, 2637.02, 3135.96, 3520.00
+            ]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
             
-            // ピッチ・エンベロープも高域に合わせて調整
+            // ピッチの動き（キック感）は、周波数にかかわらず一定の比率で
             osc.frequency.setValueAtTime(freq * 2, now);
-            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.015);
+            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
 
-            // 打撃音
             const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate);
             const nd = noiseBuf.getChannelData(0);
             for (let i = 0; i < noiseBuf.length; i++) nd[i] = Math.random() * 0.4;
@@ -142,7 +151,10 @@
 
             const sliderVal = parseInt(intervalRange.value);
             const interval = 3100 - sliderVal;
-            const decay = Math.min(0.6, (interval / 1000) + 0.05);
+            
+            // 低音は少し余韻を長めに、高音は短く（聴感上の自然さ）
+            const decayBase = freq < 300 ? 1.2 : 0.6;
+            const decay = Math.min(decayBase, (interval / 1000) + 0.1);
 
             g.gain.setValueAtTime(0, now);
             g.gain.linearRampToValueAtTime(0.3, now + 0.005);
