@@ -3,30 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Balanced Ambient Mixer</title>
+    <title>High-Pitch Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
-        
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 10px;
             background: rgba(0, 0, 0, 0.6); padding: 25px; border-radius: 30px; backdrop-filter: blur(10px);
             min-width: 240px; border: 1px solid rgba(255,255,255,0.1);
         }
-
         button { 
             width: 60px; height: 60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
             background: #000; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
         }
         button.active { background: #4ca1af; border-color: #4ca1af; box-shadow: 0 0 25px rgba(76, 161, 175, 0.6); transform: scale(0.9); }
-
         .slider-group { width: 100%; display: flex; flex-direction: column; gap: 8px; }
         .slider-item { display: flex; flex-direction: column; gap: 4px; }
-        
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
         .label { color: white; font-size: 9px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
-
         .logo-container {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 5; color: white; text-align: center; white-space: nowrap;
@@ -123,30 +118,36 @@
         function playMarimba() {
             if (!isPlaying) return;
             const now = audioCtx.currentTime;
-            const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25]; 
+            
+            // 【修正】音階自体を2オクターブ上げました (元の周波数の4倍)
+            // 1046Hz(C6) 〜 2637Hz(E7) あたりのキラキラした音域です
+            const scale = [1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00, 2349.32, 2637.02]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq * 4, now);
-            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
+            
+            // ピッチ・エンベロープも高域に合わせて調整
+            osc.frequency.setValueAtTime(freq * 2, now);
+            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.015);
 
+            // 打撃音
             const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate);
             const nd = noiseBuf.getChannelData(0);
-            for (let i = 0; i < noiseBuf.length; i++) nd[i] = Math.random() * 0.5;
+            for (let i = 0; i < noiseBuf.length; i++) nd[i] = Math.random() * 0.4;
             const ns = audioCtx.createBufferSource();
             ns.buffer = noiseBuf;
             const ng = audioCtx.createGain();
 
             const sliderVal = parseInt(intervalRange.value);
             const interval = 3100 - sliderVal;
-            const decay = Math.min(0.8, (interval / 1000) + 0.1);
+            const decay = Math.min(0.6, (interval / 1000) + 0.05);
 
             g.gain.setValueAtTime(0, now);
-            g.gain.linearRampToValueAtTime(0.4, now + 0.005);
+            g.gain.linearRampToValueAtTime(0.3, now + 0.005);
             g.gain.exponentialRampToValueAtTime(0.001, now + decay);
-            ng.gain.setValueAtTime(0.2, now);
+            ng.gain.setValueAtTime(0.15, now);
             ng.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
 
             osc.connect(g); g.connect(marimbaMasterGain);
@@ -160,7 +161,6 @@
 
         btn.addEventListener('click', () => {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
             if (isPlaying) {
                 isPlaying = false;
                 clearTimeout(marimbaTimer);
@@ -171,7 +171,6 @@
             } else {
                 isPlaying = true;
                 btn.classList.add('active');
-
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 noiseGain = audioCtx.createGain();
                 marimbaMasterGain = audioCtx.createGain();
@@ -179,11 +178,9 @@
                 reverbGain = audioCtx.createGain();
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 2048;
-
                 noiseGain.gain.value = getNoiseGainValue(noiseVolRange.value);
                 marimbaMasterGain.gain.value = parseFloat(marimbaVolRange.value);
                 reverbGain.gain.value = parseFloat(reverbRange.value);
-
                 scriptNode.onaudioprocess = (e) => {
                     const out = e.outputBuffer.getChannelData(0);
                     for (let i = 0; i < out.length; i++) {
@@ -193,7 +190,6 @@
                         lastOut = b;
                     }
                 };
-
                 scriptNode.connect(noiseGain);
                 noiseGain.connect(analyser);
                 marimbaMasterGain.connect(analyser);
@@ -201,17 +197,14 @@
                 reverbNode.connect(reverbGain);
                 reverbGain.connect(analyser);
                 analyser.connect(audioCtx.destination);
-
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 const nyquist = audioCtx.sampleRate / 2;
                 const maxFreqToDraw = 24000;
                 const maxIndexToDraw = Math.floor((maxFreqToDraw / nyquist) * dataArray.length);
-
                 const draw = () => {
                     if (!isPlaying) return;
                     requestAnimationFrame(draw);
                     analyser.getByteFrequencyData(dataArray);
-                    
                     for (let i = 0; i < canvas.width; i++) {
                         const ratio = i / canvas.width;
                         const audioIdx = Math.floor(ratio * maxIndexToDraw);
