@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Zoomed Ambient Mixer</title>
+    <title>Balanced Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -22,7 +22,7 @@
         button.active { background: #4ca1af; border-color: #4ca1af; box-shadow: 0 0 25px rgba(76, 161, 175, 0.6); transform: scale(0.9); }
 
         .slider-group { width: 100%; display: flex; flex-direction: column; gap: 8px; }
-        .slider-item { display: flex; flex-direction: column; gap: 3px; }
+        .slider-item { display: flex; flex-direction: column; gap: 4px; }
         
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
         .label { color: white; font-size: 9px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
@@ -80,6 +80,7 @@
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
 
+        // イベントリスナー
         filterRange.addEventListener('input', (e) => filterWeight = parseFloat(e.target.value));
         noiseVolRange.addEventListener('input', (e) => noiseGain && noiseGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
         marimbaVolRange.addEventListener('input', (e) => marimbaMasterGain && marimbaMasterGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
@@ -102,6 +103,7 @@
         }
         prepareImageData();
 
+        // 疑似リバーブの生成
         function createReverb() {
             const len = audioCtx.sampleRate * 3;
             const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
@@ -125,9 +127,12 @@
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
+            
+            // ピッチ・エンベロープ（アタック強化）
             osc.frequency.setValueAtTime(freq * 4, now);
             osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
 
+            // 打撃音（ノイズ）
             const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate);
             const nd = noiseBuf.getChannelData(0);
             for (let i = 0; i < noiseBuf.length; i++) nd[i] = Math.random() * 0.5;
@@ -190,6 +195,7 @@
                     }
                 };
 
+                // 接続（スピーカーへは全帯域を送る）
                 scriptNode.connect(noiseGain);
                 noiseGain.connect(analyser);
                 marimbaMasterGain.connect(analyser);
@@ -200,7 +206,9 @@
 
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 const nyquist = audioCtx.sampleRate / 2;
-                const maxFreqToDraw = 4000;
+                
+                // --- 【修正ポイント】描画範囲を8,000Hzに ---
+                const maxFreqToDraw = 8000; // 以前の4000Hzから倍に
                 const maxIndexToDraw = Math.floor((maxFreqToDraw / nyquist) * dataArray.length);
 
                 const draw = () => {
@@ -211,6 +219,7 @@
                     for (let i = 0; i < canvas.width; i++) {
                         const ratio = i / canvas.width;
                         const audioIdx = Math.floor(ratio * maxIndexToDraw);
+                        
                         const val = dataArray[audioIdx];
                         let r = 0, g = 0, b = 0;
                         if (val < 128) { r = val * 2; }
