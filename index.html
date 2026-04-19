@@ -3,25 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>High-Density Ambient Mixer</title>
+    <title>Advanced Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
+        
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 12px;
             background: rgba(0, 0, 0, 0.5); padding: 25px; border-radius: 30px; backdrop-filter: blur(10px);
             min-width: 240px;
         }
+
         button { 
             width: 60px; height: 60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
             background: #000; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
         }
         button.active { background: #4ca1af; border-color: #4ca1af; box-shadow: 0 0 25px rgba(76, 161, 175, 0.6); transform: scale(0.9); }
+
         .slider-group { width: 100%; display: flex; flex-direction: column; gap: 10px; }
         .slider-item { display: flex; flex-direction: column; gap: 4px; }
+        
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4ca1af; }
         .label { color: white; font-size: 9px; letter-spacing: 2px; opacity: 0.6; text-transform: uppercase; text-align: center; }
+
         .logo-container {
             position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
             z-index: 5; color: white; text-align: center; white-space: nowrap;
@@ -33,28 +38,33 @@
 </head>
 <body>
     <canvas id="visualizer"></canvas>
+    
     <div class="controls">
         <button id="btn"></button>
+        
         <div class="slider-group">
             <div class="slider-item">
                 <div class="label">Noise Color</div>
                 <input type="range" id="filterRange" min="0" max="0.99" step="0.01" value="0.9">
             </div>
+            
             <div class="slider-item">
                 <div class="label">Noise Volume</div>
                 <input type="range" id="noiseVolRange" min="0" max="1" step="0.01" value="0.5">
             </div>
+
             <div class="slider-item">
                 <div class="label">Melody Volume</div>
                 <input type="range" id="marimbaVolRange" min="0" max="1" step="0.01" value="0.3">
             </div>
+
             <div class="slider-item">
                 <div class="label">Melody Density (Slow - Fast)</div>
-                <!-- min(Slow)を3000ms、max(Fast)を100msに設定 -->
                 <input type="range" id="intervalRange" min="100" max="3000" step="50" value="2000">
             </div>
         </div>
     </div>
+
     <div class="logo-container">
         <div class="logo-text">DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span></div>
     </div>
@@ -103,29 +113,52 @@
             const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
+            // --- 1. 本体（サイン波）の生成 ---
             const osc = audioCtx.createOscillator();
             const noteGain = audioCtx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, now);
+            
+            // ピッチ・エンベロープ: 4倍の周波数から一気に落とす（キック感）
+            osc.frequency.setValueAtTime(freq * 4, now);
+            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
 
-            // スライダーの値(ms)を直接取得（右にいくほど値が小さくなるよう計算）
+            // --- 2. 打撃音（一瞬のノイズ）の生成 ---
+            const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseBuffer.length; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            const noiseSource = audioCtx.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+            const noiseGain = audioCtx.createGain();
+
+            // --- 3. 音量エンベロープの設定 ---
             const sliderVal = parseInt(intervalRange.value);
-            const currentInterval = 3100 - sliderVal; // 反転させて右側を高速(100ms)に
-
+            const currentInterval = 3100 - sliderVal;
             const decayTime = Math.min(0.8, (currentInterval / 1000) + 0.1);
 
+            // 本体の減衰
             noteGain.gain.setValueAtTime(0, now);
             noteGain.gain.linearRampToValueAtTime(0.5, now + 0.005); 
             noteGain.gain.exponentialRampToValueAtTime(0.001, now + decayTime);
 
+            // ノイズの減衰（0.01秒で消す）
+            noiseGain.gain.setValueAtTime(0.3, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
+
+            // --- 4. 接続と再生 ---
             osc.connect(noteGain);
             noteGain.connect(marimbaMasterGain);
+            noiseSource.connect(noiseGain);
+            noiseGain.connect(marimbaMasterGain);
+            
             osc.start(now);
             osc.stop(now + decayTime + 0.1);
+            noiseSource.start(now);
 
+            // 次の予約
             const randomJitter = (Math.random() * 0.4 + 0.8); 
             const nextTime = currentInterval * randomJitter;
-            
             marimbaTimer = setTimeout(playMarimba, nextTime);
         }
 
