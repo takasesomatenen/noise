@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Monochrome Wave Mixer - Fixed</title>
+    <title>Monochrome Wave Mixer - Pure Flow</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -11,28 +11,30 @@
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 6px;
-            background: rgba(0, 0, 0, 0.75); padding: 15px; border-radius: 30px; backdrop-filter: blur(10px);
-            min-width: 260px; border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255, 255, 255, 0.85); padding: 15px; border-radius: 30px; backdrop-filter: blur(10px);
+            min-width: 260px; border: 1px solid rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
 
         button { 
-            width: 45px; height: 45px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); 
-            background: #000; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
+            width: 45px; height: 45px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); 
+            background: #fff; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
         }
-        button.active { background: #666; border-color: #888; box-shadow: 0 0 25px rgba(0, 0, 0, 0.2); transform: scale(0.9); }
+        button.active { background: #000; border-color: #000; transform: scale(0.9); }
 
         .slider-group { width: 100%; display: flex; flex-direction: column; gap: 4px; }
         .slider-item { display: flex; flex-direction: column; gap: 1px; }
-        input[type=range] { width: 100%; cursor: pointer; accent-color: #888; }
-        .label { color: white; font-size: 7px; letter-spacing: 1.5px; opacity: 0.8; text-transform: uppercase; text-align: center; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #000; }
+        /* スライダーの文字を黒に変更 */
+        .label { color: #000; font-size: 7px; letter-spacing: 1.5px; opacity: 0.6; text-transform: uppercase; text-align: center; }
 
         .logo-container {
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
             z-index: 5; color: #000; text-align: center; white-space: nowrap;
         }
-        .logo-text { font-size: 11px; font-weight: 300; letter-spacing: 0.3em; opacity: 0.5; text-transform: uppercase; }
-        .logo-symbol { display: inline-block; vertical-align: middle; width: 8px; height: 8px; background-color: #000; border-radius: 50%; margin-left: 8px; margin-right: 4px; opacity: 0.5;}
-        .logo-symbol-outline { display: inline-block; vertical-align: middle; width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; opacity: 0.5;}
+        .logo-text { font-size: 11px; font-weight: 300; letter-spacing: 0.3em; opacity: 0.4; text-transform: uppercase; }
+        .logo-symbol { display: inline-block; vertical-align: middle; width: 8px; height: 8px; background-color: #000; border-radius: 50%; margin-left: 8px; margin-right: 4px; opacity: 0.4;}
+        .logo-symbol-outline { display: inline-block; vertical-align: middle; width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; opacity: 0.4;}
     </style>
 </head>
 <body>
@@ -107,7 +109,6 @@
         reverbRange.addEventListener('input', (e) => reverbGain && reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05));
 
         function resize() {
-            // 解像度を少し高く設定
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             if (tempCanvas) {
@@ -127,12 +128,12 @@
             }
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
-            // 初期状態を白で埋める
             tempCtx.fillStyle = '#fff';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         }
+
         prepareImageData();
-        resize(); // 初回のサイズ合わせ
+        resize();
 
         function createReverb() {
             const len = audioCtx.sampleRate * 4;
@@ -153,35 +154,28 @@
             const now = audioCtx.currentTime;
             const scale = [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00, 2349.32, 2637.02, 3135.96, 3520.00]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
-
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
             osc.frequency.setValueAtTime(freq * 2, now);
             osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
-
             const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate);
             const nd = noiseBuf.getChannelData(0);
             for (let i = 0; i < noiseBuf.length; i++) nd[i] = Math.random() * 0.4;
             const ns = audioCtx.createBufferSource();
             ns.buffer = noiseBuf;
             const ng = audioCtx.createGain();
-
             const interval = 3100 - parseInt(intervalRange.value);
             const decay = Math.min(1.2, (interval / 1000) + 0.1);
-
             g.gain.setValueAtTime(0, now);
             g.gain.linearRampToValueAtTime(0.3, now + 0.005);
             g.gain.exponentialRampToValueAtTime(0.001, now + decay);
             ng.gain.setValueAtTime(0.15, now);
             ng.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
-
             osc.connect(g); g.connect(marimbaMasterGain);
             ns.connect(ng); ng.connect(marimbaMasterGain);
-            
             osc.start(now); osc.stop(now + decay + 0.1);
             ns.start(now);
-
             marimbaTimer = setTimeout(playMarimba, interval * (Math.random() * 0.4 + 0.8));
         }
 
@@ -204,11 +198,9 @@
                 reverbGain = audioCtx.createGain();
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 2048;
-
                 noiseGain.gain.value = getNoiseGainValue(noiseVolRange.value);
                 marimbaMasterGain.gain.value = parseFloat(marimbaVolRange.value);
                 reverbGain.gain.value = parseFloat(reverbRange.value);
-
                 scriptNode.onaudioprocess = (e) => {
                     const outL = e.outputBuffer.getChannelData(0);
                     const outR = e.outputBuffer.getChannelData(1);
@@ -232,7 +224,6 @@
                         lastOutL = brownL; lastOutR = brownR;
                     }
                 };
-
                 scriptNode.connect(noiseGain);
                 noiseGain.connect(analyser);
                 marimbaMasterGain.connect(analyser);
@@ -240,7 +231,6 @@
                 reverbNode.connect(reverbGain);
                 reverbGain.connect(analyser);
                 analyser.connect(audioCtx.destination);
-
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 const maxIndexToDraw = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dataArray.length);
 
@@ -249,19 +239,14 @@
                     requestAnimationFrame(draw);
                     analyser.getByteFrequencyData(dataArray);
 
-                    // 1. まず現在の画面を tempCanvas にコピーし、1ピクセル下にずらして描画
-                    tempCtx.save();
-                    tempCtx.globalCompositeOperation = 'copy';
+                    // --- 根本的な解決ロジック ---
+                    // 1. メインの描画を1px下にずらす（フェードなしで「コピー」する）
                     tempCtx.drawImage(canvas, 0, 1);
-                    tempCtx.restore();
-
-                    // 2. 残像を消す（白くフェードさせる）
-                    tempCtx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-                    tempCtx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    // 3. 最上部に新しい音のラインを生成
+                    
+                    // 2. 最上部の1px分のデータを作成
                     for (let i = 0; i < canvas.width; i++) {
                         const val = dataArray[Math.floor((i / canvas.width) * maxIndexToDraw)];
+                        // 強ければ強いほど黒く(0)、弱ければ白い(255)
                         const gray = 255 - val;
                         const p = i * 4;
                         imgData.data[p] = gray;
@@ -270,9 +255,9 @@
                         imgData.data[p+3] = 255;
                     }
                     
-                    // 4. メインキャンバスに、ずらした背景を表示
+                    // 3. ずらした背景を描画し直す
                     ctx.drawImage(tempCanvas, 0, 0);
-                    // 5. その上に最上部の新しいラインを上書き
+                    // 4. 最上部に最新のデータを置く
                     ctx.putImageData(imgData, 0, 0);
                 }
                 draw();
