@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pure Flow - Nature Ambient Mixer</title>
+    <title>Pure Flow - Avian Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
@@ -258,33 +258,58 @@
         }
 
         // BIRD PLAYBACK
-        function playBird() {
-            if (!isPlaying || !birdEnable.checked) { birdTimer = setTimeout(playBird, 500); return; }
+        async function playBird(burstCount = 0) {
+            if (!isPlaying || !birdEnable.checked) { 
+                birdTimer = setTimeout(() => playBird(0), 500); 
+                return; 
+            }
+
             const now = audioCtx.currentTime;
-            // 高域(C6-C7)から選択
             const birdScale = scale.slice(15);
-            const freq = birdScale[Math.floor(Math.random() * birdScale.length)];
+            // 鳴くたびに少しピッチをずらして個体差を出す
+            const baseFreq = birdScale[Math.floor(Math.random() * birdScale.scale)];
+            const freq = baseFreq * (0.95 + Math.random() * 0.1);
             
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
             
-            // ピッチの落とし方をゆっくりに設定 (0.05 - 0.5s)
-            const sweepTime = parseFloat(sliders.birdPitchSpeed.value);
-            osc.frequency.setValueAtTime(freq * 1.5, now);
+            const sweepTime = parseFloat(sliders.birdPitchSpeed.value) * (0.8 + Math.random() * 0.4);
+            // 上昇か下降かをランダムに決定
+            const direction = Math.random() > 0.5 ? 1.5 : 0.7;
+            
+            osc.frequency.setValueAtTime(freq * direction, now);
             osc.frequency.exponentialRampToValueAtTime(freq, now + sweepTime);
 
             g.gain.setValueAtTime(0, now);
-            g.gain.linearRampToValueAtTime(0.2, now + 0.02);
-            g.gain.exponentialRampToValueAtTime(0.001, now + sweepTime + 0.1);
+            g.gain.linearRampToValueAtTime(0.2, now + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.001, now + sweepTime + 0.05);
 
             osc.connect(g); g.connect(birdGain);
-            osc.start(now); osc.stop(now + sweepTime + 0.2);
+            osc.start(now); osc.stop(now + sweepTime + 0.1);
 
-            const interval = 3100 - parseInt(sliders.birdInterval.value);
-            // 鳥らしく、ときどき「チチチッ」と連打するように
-            const burst = Math.random() > 0.8 ? 100 : interval;
-            birdTimer = setTimeout(playBird, burst * (Math.random() * 0.5 + 0.5));
+            // バースト（連打）判定
+            let nextBurst = 0;
+            let nextInterval = 0;
+
+            if (burstCount > 0) {
+                // 連打中
+                nextBurst = burstCount - 1;
+                nextInterval = 50 + Math.random() * 100; // 短い間隔
+            } else {
+                // 次の鳴き始めの判定
+                const isBurst = Math.random() > 0.7; // 30%の確率で連打開始
+                if (isBurst) {
+                    nextBurst = Math.floor(Math.random() * 4) + 1; // 1〜4回追加
+                    nextInterval = 80;
+                } else {
+                    nextBurst = 0;
+                    nextInterval = 3100 - parseInt(sliders.birdInterval.value);
+                    nextInterval *= (Math.random() * 0.6 + 0.7);
+                }
+            }
+
+            birdTimer = setTimeout(() => playBird(nextBurst), nextInterval);
         }
 
         btn.addEventListener('click', async (e) => {
@@ -345,17 +370,4 @@
                     if (!isPlaying) return;
                     requestAnimationFrame(draw); if (!isVisible) return;
                     analyser.getByteFrequencyData(dataArray);
-                    tempCtx.drawImage(canvas, 0, 1);
-                    for (let i = 0; i < canvas.width; i++) {
-                        const val = dataArray[Math.floor((i / canvas.width) * maxIndexToDraw)];
-                        const gray = 255 - val;
-                        const p = i * 4; imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255;
-                    }
-                    ctx.drawImage(tempCanvas, 0, 0); ctx.putImageData(imgData, 0, 0);
-                }
-                draw(); playMarimba(); playBird();
-            }
-        });
-    </script>
-</body>
-</html>
+                    tempCtx.dr
