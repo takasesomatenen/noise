@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pure Flow - Grouped Ambient Mixer (Fade & Transparency Fix)</title>
+    <title>Pure Flow - Reliable Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -11,7 +11,6 @@
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
-            /* 【修正】透明度を85%から65%に上げ、裏のパターンを見えやすく */
             background: rgba(255, 255, 255, 0.65); padding: 18px; border-radius: 20px; backdrop-filter: blur(10px);
             min-width: 260px; border: 1px solid rgba(0,0,0,0.05);
             box-shadow: 0 10px 40px rgba(0,0,0,0.08);
@@ -53,7 +52,6 @@
             display: flex; align-items: center; justify-content: center;
         }
         
-        /* 【修正】margin-topを-1pxにして視覚的な中心をピチッと揃える */
         .logo-symbol { display: inline-block; width: 8px; height: 8px; background-color: #000; border-radius: 50%; margin-left: 8px; margin-right: 4px; margin-top: -1px;}
         .logo-symbol-outline { display: inline-block; width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; margin-top: -1px;}
     </style>
@@ -131,14 +129,12 @@
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
 
-        // ノイズの最大ボリューム係数（0.36 = 1.0 * 0.36）
         const getNoiseGainValue = (val) => parseFloat(val) * 0.36;
 
         document.addEventListener('visibilitychange', () => {
             isVisible = (document.visibilityState === 'visible');
         });
 
-        // 再生中のリアルタイムなスライダー反映（フェードイン中はonaudioprocessで計算するため、ここではisPlayingのみチェック）
         filterRange.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
         stereoRange.addEventListener('input', (e) => stereoWidth = parseFloat(e.target.value));
         waveHeightRange.addEventListener('input', (e) => waveHeight = parseFloat(e.target.value));
@@ -199,18 +195,17 @@
             if (!isPlaying) return;
             const now = audioCtx.currentTime;
             const scale = [
-                130.81, 146.83, 164.81, 196.00, 220.00, // C3-A3
-                261.63, 293.66, 329.63, 392.00, 440.00, // C4-A4 (当初基準)
-                523.25, 587.33, 659.25, 783.99, 880.00, // C5-A5
-                1046.50, 1174.66, 1318.51, 1567.98, 1760.00, // C6-A6
-                2093.00, 2349.32, 2637.02, 3135.96, 3520.00  // C7-A7
+                130.81, 146.83, 164.81, 196.00, 220.00,
+                261.63, 293.66, 329.63, 392.00, 440.00,
+                523.25, 587.33, 659.25, 783.99, 880.00,
+                1046.50, 1174.66, 1318.51, 1567.98, 1760.00,
+                2093.00, 2349.32, 2637.02, 3135.96, 3520.00
             ]; 
             const freq = scale[Math.floor(Math.random() * scale.length)];
 
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
-            
             osc.frequency.setValueAtTime(freq * 2, now);
             osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
 
@@ -239,15 +234,23 @@
             marimbaTimer = setTimeout(playMarimba, interval * (Math.random() * 0.4 + 0.8));
         }
 
-        btn.addEventListener('click', () => {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        btn.addEventListener('click', async () => {
+            // AudioContextが未作成なら作成
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // 【修正】AudioContextが眠っていたら叩き起こす
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+
             if (isPlaying) {
                 isPlaying = false;
                 clearTimeout(marimbaTimer);
                 btn.classList.remove('active');
                 
                 const now = audioCtx.currentTime;
-                // フェードアウト
                 if(noiseGain) noiseGain.gain.setTargetAtTime(0, now, 0.2);
                 if(marimbaMasterGain) marimbaMasterGain.gain.setTargetAtTime(0, now, 0.2);
                 
@@ -268,20 +271,16 @@
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 2048;
 
-                // 【フェードイン実装】
                 const now = audioCtx.currentTime;
-                // 初期音量を0に設定
                 noiseGain.gain.setValueAtTime(0, now);
                 marimbaMasterGain.gain.setValueAtTime(0, now);
                 
-                // 1.5秒かけて目標の音量までフェードイン
                 const targetNoiseVol = getNoiseGainValue(noiseVolRange.value);
                 const targetMelodyVol = parseFloat(marimbaVolRange.value);
                 
                 noiseGain.gain.linearRampToValueAtTime(targetNoiseVol, now + 1.5);
                 marimbaMasterGain.gain.linearRampToValueAtTime(targetMelodyVol, now + 1.5);
 
-                // リバーブは最初から設定
                 reverbGain.gain.value = parseFloat(reverbRange.value);
 
                 scriptNode.onaudioprocess = (e) => {
