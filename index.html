@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pure Flow - Grouped Ambient Mixer</title>
+    <title>Pure Flow - Eco Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
@@ -23,7 +23,6 @@
         }
         button#btn.active { background: #000; border-color: #000; transform: scale(0.9); }
 
-        /* トグル（details/summary）のスタイル */
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
         details:last-child { border-bottom: none; }
         
@@ -111,6 +110,9 @@
         let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.7, stereoWidth = 0.5;
         let waveHeight = 0.5, waveWidth = 0.7, isPlaying = false, marimbaTimer;
         let phaseA = 0, phaseB = 0, phaseC = 0;
+        
+        // エコ処理用の状態管理
+        let isVisible = true;
 
         const btn = document.getElementById('btn');
         const filterRange = document.getElementById('filterRange');
@@ -125,6 +127,12 @@
         const ctx = canvas.getContext('2d');
 
         const getNoiseGainValue = (val) => parseFloat(val) * 0.36;
+
+        // ページ視認性の変更を検知
+        document.addEventListener('visibilitychange', () => {
+            isVisible = (document.visibilityState === 'visible');
+            console.log(isVisible ? "Eco-mode off: Visualizer resumed" : "Eco-mode on: Visualizer paused");
+        });
 
         filterRange.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
         stereoRange.addEventListener('input', (e) => stereoWidth = parseFloat(e.target.value));
@@ -263,6 +271,10 @@
                 const draw = () => {
                     if (!isPlaying) return;
                     requestAnimationFrame(draw);
+                    
+                    // 【エコ処理】画面が見えていない時は描画計算を行わない
+                    if (!isVisible) return;
+
                     analyser.getByteFrequencyData(dataArray);
                     tempCtx.drawImage(canvas, 0, 1);
                     for (let i = 0; i < canvas.width; i++) {
