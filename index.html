@@ -3,34 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Monochrome Wave Mixer - Pure Flow</title>
+    <title>Pure Flow - Grouped Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
         
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 6px;
-            background: rgba(255, 255, 255, 0.85); padding: 15px; border-radius: 30px; backdrop-filter: blur(10px);
-            min-width: 260px; border: 1px solid rgba(0,0,0,0.1);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
+            background: rgba(255, 255, 255, 0.85); padding: 18px; border-radius: 20px; backdrop-filter: blur(10px);
+            min-width: 260px; border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            max-height: 90vh; overflow-y: auto;
         }
 
-        button { 
-            width: 45px; height: 45px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); 
-            background: #fff; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
+        button#btn { 
+            width: 50px; height: 50px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); 
+            background: #fff; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 10px;
         }
-        button.active { background: #000; border-color: #000; transform: scale(0.9); }
+        button#btn.active { background: #000; border-color: #000; transform: scale(0.9); }
 
-        .slider-group { width: 100%; display: flex; flex-direction: column; gap: 4px; }
-        .slider-item { display: flex; flex-direction: column; gap: 1px; }
+        /* トグル（details/summary）のスタイル */
+        details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
+        details:last-child { border-bottom: none; }
+        
+        summary { 
+            color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; 
+            cursor: pointer; outline: none; list-style: none; padding: 5px;
+            display: flex; align-items: center; justify-content: space-between;
+            opacity: 0.7; transition: opacity 0.3s;
+        }
+        summary:hover { opacity: 1; }
+        summary::-webkit-details-marker { display: none; }
+        summary::after { content: '＋'; font-weight: normal; font-size: 10px; }
+        details[open] summary::after { content: '－'; }
+
+        .slider-group { padding: 10px 5px; display: flex; flex-direction: column; gap: 8px; }
+        .slider-item { display: flex; flex-direction: column; gap: 2px; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #000; }
-        /* スライダーの文字を黒に変更 */
-        .label { color: #000; font-size: 7px; letter-spacing: 1.5px; opacity: 0.6; text-transform: uppercase; text-align: center; }
+        .label { color: #000; font-size: 7px; letter-spacing: 1.5px; opacity: 0.5; text-transform: uppercase; }
 
         .logo-container {
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            z-index: 5; color: #000; text-align: center; white-space: nowrap;
+            z-index: 5; color: #000; text-align: center; white-space: nowrap; pointer-events: none;
         }
         .logo-text { font-size: 11px; font-weight: 300; letter-spacing: 0.3em; opacity: 0.4; text-transform: uppercase; }
         .logo-symbol { display: inline-block; vertical-align: middle; width: 8px; height: 8px; background-color: #000; border-radius: 50%; margin-left: 8px; margin-right: 4px; opacity: 0.4;}
@@ -41,41 +56,52 @@
     <canvas id="visualizer"></canvas>
     <div class="controls">
         <button id="btn"></button>
-        <div class="slider-group">
-            <div class="slider-item">
-                <div class="label">Noise Color (Base)</div>
-                <input type="range" id="filterRange" min="0.2" max="0.8" step="0.01" value="0.7">
+        
+        <details open>
+            <summary>NOISE</summary>
+            <div class="slider-group">
+                <div class="slider-item">
+                    <div class="label">Volume</div>
+                    <input type="range" id="noiseVolRange" min="0" max="1" step="0.01" value="0.4">
+                </div>
+                <div class="slider-item">
+                    <div class="label">Color (Base)</div>
+                    <input type="range" id="filterRange" min="0.2" max="0.8" step="0.01" value="0.7">
+                </div>
+                <div class="slider-item">
+                    <div class="label">Stereo Width</div>
+                    <input type="range" id="stereoRange" min="0" max="1" step="0.01" value="0.5">
+                </div>
+                <div class="slider-item">
+                    <div class="label">Wave Height</div>
+                    <input type="range" id="waveHeightRange" min="0" max="1" step="0.01" value="0.5">
+                </div>
+                <div class="slider-item">
+                    <div class="label">Wave Width</div>
+                    <input type="range" id="waveWidthRange" min="0" max="1" step="0.01" value="0.7">
+                </div>
             </div>
-            <div class="slider-item">
-                <div class="label">Stereo Width</div>
-                <input type="range" id="stereoRange" min="0" max="1" step="0.01" value="0.5">
+        </details>
+
+        <details open>
+            <summary>MELODY</summary>
+            <div class="slider-group">
+                <div class="slider-item">
+                    <div class="label">Volume</div>
+                    <input type="range" id="marimbaVolRange" min="0" max="1" step="0.01" value="0.3">
+                </div>
+                <div class="slider-item">
+                    <div class="label">Reverb</div>
+                    <input type="range" id="reverbRange" min="0" max="1" step="0.01" value="0.5">
+                </div>
+                <div class="slider-item">
+                    <div class="label">Density</div>
+                    <input type="range" id="intervalRange" min="100" max="3000" step="50" value="2000">
+                </div>
             </div>
-            <div class="slider-item">
-                <div class="label">Wave Height</div>
-                <input type="range" id="waveHeightRange" min="0" max="1" step="0.01" value="0.5">
-            </div>
-            <div class="slider-item">
-                <div class="label">Wave Width</div>
-                <input type="range" id="waveWidthRange" min="0" max="1" step="0.01" value="0.7">
-            </div>
-            <div class="slider-item">
-                <div class="label">Noise Volume</div>
-                <input type="range" id="noiseVolRange" min="0" max="1" step="0.01" value="0.4">
-            </div>
-            <div class="slider-item">
-                <div class="label">Melody Volume</div>
-                <input type="range" id="marimbaVolRange" min="0" max="1" step="0.01" value="0.3">
-            </div>
-            <div class="slider-item">
-                <div class="label">Melody Reverb</div>
-                <input type="range" id="reverbRange" min="0" max="1" step="0.01" value="0.5">
-            </div>
-            <div class="slider-item">
-                <div class="label">Melody Density</div>
-                <input type="range" id="intervalRange" min="100" max="3000" step="50" value="2000">
-            </div>
-        </div>
+        </details>
     </div>
+
     <div class="logo-container">
         <div class="logo-text">DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span></div>
     </div>
@@ -238,15 +264,9 @@
                     if (!isPlaying) return;
                     requestAnimationFrame(draw);
                     analyser.getByteFrequencyData(dataArray);
-
-                    // --- 根本的な解決ロジック ---
-                    // 1. メインの描画を1px下にずらす（フェードなしで「コピー」する）
                     tempCtx.drawImage(canvas, 0, 1);
-                    
-                    // 2. 最上部の1px分のデータを作成
                     for (let i = 0; i < canvas.width; i++) {
                         const val = dataArray[Math.floor((i / canvas.width) * maxIndexToDraw)];
-                        // 強ければ強いほど黒く(0)、弱ければ白い(255)
                         const gray = 255 - val;
                         const p = i * 4;
                         imgData.data[p] = gray;
@@ -254,10 +274,7 @@
                         imgData.data[p+2] = gray;
                         imgData.data[p+3] = 255;
                     }
-                    
-                    // 3. ずらした背景を描画し直す
                     ctx.drawImage(tempCanvas, 0, 0);
-                    // 4. 最上部に最新のデータを置く
                     ctx.putImageData(imgData, 0, 0);
                 }
                 draw();
