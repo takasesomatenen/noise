@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pure Flow - Organic Monochrome Mixer</title>
+    <title>Pure Flow - Extended Organic Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
         canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
+            z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 6px;
             background: rgba(255, 255, 255, 0.65); padding: 18px; border-radius: 20px; backdrop-filter: blur(10px);
             min-width: 260px; border: 1px solid rgba(0,0,0,0.05);
             box-shadow: 0 10px 40px rgba(0,0,0,0.08);
@@ -18,14 +18,14 @@
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
         button#btn { 
-            width: 50px; height: 50px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); 
-            background: #fff; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 10px;
+            width: 45px; height: 45px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); 
+            background: #fff; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 5px;
         }
         button#btn.active { background: #000; border-color: #000; transform: scale(0.9); }
-        details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
+        details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 4px 0; }
         summary { 
             color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; 
-            cursor: pointer; outline: none; list-style: none; padding: 5px;
+            cursor: pointer; outline: none; list-style: none; padding: 4px;
             display: flex; align-items: center; justify-content: flex-start;
             opacity: 0.7;
         }
@@ -33,8 +33,8 @@
         .summary-text { flex-grow: 1; display: flex; justify-content: space-between; align-items: center; }
         .summary-text::after { content: '＋'; font-size: 10px; }
         details[open] .summary-text::after { content: '－'; }
-        .slider-group { padding: 10px 5px; display: flex; flex-direction: column; gap: 8px; }
-        .slider-item { display: flex; flex-direction: column; gap: 2px; }
+        .slider-group { padding: 8px 5px; display: flex; flex-direction: column; gap: 6px; }
+        .slider-item { display: flex; flex-direction: column; gap: 1px; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #000; }
         .label { color: #000; font-size: 7px; letter-spacing: 1.5px; opacity: 0.5; text-transform: uppercase; }
         .logo-container {
@@ -76,6 +76,20 @@
                 <div class="slider-item"><div class="label">Density</div><input type="range" id="birdIntervalRange" min="100" max="3000" step="50" value="1500"></div>
             </div>
         </details>
+        <details>
+            <summary><input type="checkbox" id="sparkEnable" class="part-switch" checked><div class="summary-text">SPARK</div></summary>
+            <div class="slider-group">
+                <div class="slider-item"><div class="label">Intensity</div><input type="range" id="sparkIntensityRange" min="0" max="1" step="0.01" value="0.5"></div>
+                <div class="slider-item"><div class="label">Area Width</div><input type="range" id="sparkAreaRange" min="0" max="1" step="0.01" value="0.3"></div>
+            </div>
+        </details>
+        <details>
+            <summary><input type="checkbox" id="mistEnable" class="part-switch" checked><div class="summary-text">MIST</div></summary>
+            <div class="slider-group">
+                <div class="slider-item"><div class="label">Depth</div><input type="range" id="mistDepthRange" min="0" max="1" step="0.01" value="0.4"></div>
+                <div class="slider-item"><div class="label">Area Width</div><input type="range" id="mistAreaRange" min="0" max="1" step="0.01" value="0.4"></div>
+            </div>
+        </details>
     </div>
     <a href="https://www.instagram.com/point_circle_insta/" target="_blank" class="logo-container" id="logoLink">
         <div class="logo-text">DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span></div>
@@ -83,50 +97,43 @@
 
     <script>
         let audioCtx, scriptNode, noiseGain, marimbaMasterGain, birdGain, reverbNode, reverbGain, analyser;
-        let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.7, stereoWidth = 0.5;
-        let waveHeight = 0.5, waveWidth = 0.7, isPlaying = false;
-        let marimbaTimer, birdTimer;
-        let phaseA = 0, phaseB = 0, phaseC = 0, isVisible = true;
+        let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.7, stereoWidth = 0.5, waveHeight = 0.5, waveWidth = 0.7;
+        let isPlaying = false, marimbaTimer, birdTimer, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
 
-        const btn = document.getElementById('btn');
-        const panel = document.getElementById('panel');
         const s = {
             noiseVol: document.getElementById('noiseVolRange'), filter: document.getElementById('filterRange'),
             stereo: document.getElementById('stereoRange'), waveHeight: document.getElementById('waveHeightRange'),
             waveWidth: document.getElementById('waveWidthRange'), marimbaVol: document.getElementById('marimbaVolRange'),
             reverb: document.getElementById('reverbRange'), interval: document.getElementById('intervalRange'),
             birdVol: document.getElementById('birdVolRange'), birdPitchSpeed: document.getElementById('birdPitchSpeedRange'),
-            birdInterval: document.getElementById('birdIntervalRange')
+            birdInterval: document.getElementById('birdIntervalRange'),
+            sparkIntensity: document.getElementById('sparkIntensityRange'), sparkArea: document.getElementById('sparkAreaRange'),
+            mistDepth: document.getElementById('mistDepthRange'), mistArea: document.getElementById('mistAreaRange')
         };
-        const noiseEnable = document.getElementById('noiseEnable');
-        const melodyEnable = document.getElementById('melodyEnable');
-        const birdEnable = document.getElementById('birdEnable');
-        const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d');
-
-        const getNoiseGainValue = (v) => noiseEnable.checked ? parseFloat(v) * 0.36 : 0;
-        const getMelodyGainValue = (v) => melodyEnable.checked ? parseFloat(v) : 0;
-        const getBirdGainValue = (v) => birdEnable.checked ? parseFloat(v) * 0.6 : 0;
+        const en = { noise: document.getElementById('noiseEnable'), melody: document.getElementById('melodyEnable'), bird: document.getElementById('birdEnable'), spark: document.getElementById('sparkEnable'), mist: document.getElementById('mistEnable') };
+        const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
+        const getNoiseGain = (v) => en.noise.checked ? parseFloat(v) * 0.36 : 0;
+        const getMelodyGain = (v) => en.melody.checked ? parseFloat(v) : 0;
+        const getBirdGain = (v) => en.bird.checked ? parseFloat(v) * 0.6 : 0;
 
         document.addEventListener('visibilitychange', () => { isVisible = (document.visibilityState === 'visible'); });
-        canvas.addEventListener('click', () => { panel.classList.toggle('hidden'); });
-        [noiseEnable, melodyEnable, birdEnable].forEach(el => { el.addEventListener('click', (e) => { e.stopPropagation(); updateVolumes(); }); });
+        canvas.addEventListener('click', () => { document.getElementById('panel').classList.toggle('hidden'); });
+        [en.noise, en.melody, en.bird].forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); updateVolumes(); }));
+        [en.spark, en.mist].forEach(el => el.addEventListener('click', (e) => e.stopPropagation()));
 
         function updateVolumes() {
             if (!isPlaying || !audioCtx) return;
-            const now = audioCtx.currentTime;
-            noiseGain.gain.setTargetAtTime(getNoiseGainValue(s.noiseVol.value), now, 0.1);
-            marimbaMasterGain.gain.setTargetAtTime(getMelodyGainValue(s.marimbaVol.value), now, 0.1);
-            birdGain.gain.setTargetAtTime(getBirdGainValue(s.birdVol.value), now, 0.1);
+            const n = audioCtx.currentTime;
+            noiseGain.gain.setTargetAtTime(getNoiseGain(s.noiseVol.value), n, 0.1);
+            marimbaMasterGain.gain.setTargetAtTime(getMelodyGain(s.marimbaVol.value), n, 0.1);
+            birdGain.gain.setTargetAtTime(getBirdGain(s.birdVol.value), n, 0.1);
         }
 
         s.filter.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
         s.stereo.addEventListener('input', (e) => stereoWidth = parseFloat(e.target.value));
         s.waveHeight.addEventListener('input', (e) => waveHeight = parseFloat(e.target.value));
         s.waveWidth.addEventListener('input', (e) => waveWidth = parseFloat(e.target.value));
-        s.noiseVol.addEventListener('input', updateVolumes);
-        s.marimbaVol.addEventListener('input', updateVolumes);
-        s.birdVol.addEventListener('input', updateVolumes);
+        s.noiseVol.addEventListener('input', updateVolumes); s.marimbaVol.addEventListener('input', updateVolumes); s.birdVol.addEventListener('input', updateVolumes);
         s.reverb.addEventListener('input', (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); });
 
         function resize() {
@@ -146,128 +153,82 @@
         prepareImageData(); resize();
 
         function createReverb() {
-            const len = audioCtx.sampleRate * 4;
-            const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
-            for (let c = 0; c < 2; c++) {
-                const d = buf.getChannelData(c);
-                for (let i = 0; i < len; i++) { d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4); }
-            }
+            const len = audioCtx.sampleRate * 4; const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+            for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) { d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4); } }
             const node = audioCtx.createConvolver(); node.buffer = buf; return node;
         }
 
         const scale = [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00, 2349.32, 2637.02, 3135.96, 3520.00];
 
         function playMarimba() {
-            if (!isPlaying) return;
-            if (!melodyEnable.checked) { marimbaTimer = setTimeout(playMarimba, 500); return; }
-            const now = audioCtx.currentTime;
-            const freq = scale[Math.floor(Math.random() * scale.length)];
+            if (!isPlaying) return; if (!en.melody.checked) { marimbaTimer = setTimeout(playMarimba, 500); return; }
+            const n = audioCtx.currentTime; const f = scale[Math.floor(Math.random() * scale.length)];
             const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
-            osc.type = 'sine'; osc.frequency.setValueAtTime(freq * 2, now); osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
-            const interval = 3100 - (parseInt(s.interval.value) || 2000);
-            const decay = Math.min(1.2, (interval / 1000) + 0.1);
-            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3, now + 0.005); g.gain.exponentialRampToValueAtTime(0.001, now + decay);
-            osc.connect(g); g.connect(marimbaMasterGain);
-            osc.start(now); osc.stop(now + decay + 0.1);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(f * 2, n); osc.frequency.exponentialRampToValueAtTime(f, n + 0.02);
+            const interval = 3100 - (parseInt(s.interval.value) || 2000); const decay = Math.min(1.2, (interval / 1000) + 0.1);
+            g.gain.setValueAtTime(0, n); g.gain.linearRampToValueAtTime(0.3, n + 0.005); g.gain.exponentialRampToValueAtTime(0.001, n + decay);
+            osc.connect(g); g.connect(marimbaMasterGain); osc.start(n); osc.stop(n + decay + 0.1);
             marimbaTimer = setTimeout(playMarimba, interval * (Math.random() * 0.4 + 0.8));
         }
 
-        function playBird(burstCount = 0) {
-            if (!isPlaying) return;
-            if (!birdEnable.checked) { birdTimer = setTimeout(() => playBird(0), 500); return; }
-            const now = audioCtx.currentTime;
-            const birdScale = scale.slice(15);
-            const freq = birdScale[Math.floor(Math.random() * birdScale.length)] * (0.95 + Math.random() * 0.1);
-            const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
-            osc.type = 'sine';
-            const sweepTime = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
-            const direction = Math.random() > 0.5 ? 1.5 : 0.7;
-            osc.frequency.setValueAtTime(freq * direction, now); osc.frequency.exponentialRampToValueAtTime(freq, now + sweepTime);
-            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.2, now + 0.01); g.gain.exponentialRampToValueAtTime(0.001, now + sweepTime + 0.05);
-            osc.connect(g); g.connect(birdGain);
-            osc.start(now); osc.stop(now + sweepTime + 0.1);
-            let nextBurst = 0, nextInterval = 0;
-            if (burstCount > 0) {
-                nextBurst = burstCount - 1; nextInterval = 50 + Math.random() * 100;
-            } else {
-                if (Math.random() > 0.7) { nextBurst = Math.floor(Math.random() * 4) + 1; nextInterval = 80; }
-                else { nextBurst = 0; nextInterval = (3100 - (parseInt(s.birdInterval.value) || 1500)) * (0.6 + Math.random() * 0.7); }
-            }
-            birdTimer = setTimeout(() => playBird(nextBurst), nextInterval);
+        function playBird(bc = 0) {
+            if (!isPlaying) return; if (!en.bird.checked) { birdTimer = setTimeout(() => playBird(0), 500); return; }
+            const n = audioCtx.currentTime; const bs = scale.slice(15);
+            const f = bs[Math.floor(Math.random() * bs.length)] * (0.95 + Math.random() * 0.1);
+            const osc = audioCtx.createOscillator(); const g = audioCtx.createGain(); osc.type = 'sine';
+            const st = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
+            osc.frequency.setValueAtTime(f * (Math.random() > 0.5 ? 1.5 : 0.7), n); osc.frequency.exponentialRampToValueAtTime(f, n + st);
+            g.gain.setValueAtTime(0, n); g.gain.linearRampToValueAtTime(0.2, n + 0.01); g.gain.exponentialRampToValueAtTime(0.001, n + st + 0.05);
+            osc.connect(g); g.connect(birdGain); osc.start(n); osc.stop(n + st + 0.1);
+            let nb = 0, ni = 0;
+            if (bc > 0) { nb = bc - 1; ni = 50 + Math.random() * 100; }
+            else { if (Math.random() > 0.7) { nb = Math.floor(Math.random() * 4) + 1; ni = 80; }
+            else { nb = 0; ni = (3100 - (parseInt(s.birdInterval.value) || 1500)) * (0.6 + Math.random() * 0.7); } }
+            birdTimer = setTimeout(() => playBird(nb), ni);
         }
 
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        document.getElementById('btn').addEventListener('click', async (e) => {
+            e.stopPropagation(); if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             if (isPlaying) {
-                isPlaying = false; clearTimeout(marimbaTimer); clearTimeout(birdTimer); btn.classList.remove('active');
-                const now = audioCtx.currentTime;
-                [noiseGain, marimbaMasterGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, now, 0.2));
+                isPlaying = false; clearTimeout(marimbaTimer); clearTimeout(birdTimer); document.getElementById('btn').classList.remove('active');
+                const n = audioCtx.currentTime; [noiseGain, marimbaMasterGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, n, 0.2));
                 setTimeout(() => { if(scriptNode) scriptNode.disconnect(); if(analyser) analyser.disconnect(); scriptNode = null; }, 1000);
             } else {
-                isPlaying = true; btn.classList.add('active');
+                isPlaying = true; document.getElementById('btn').classList.add('active');
                 scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
                 noiseGain = audioCtx.createGain(); marimbaMasterGain = audioCtx.createGain(); birdGain = audioCtx.createGain();
-                reverbNode = createReverb(); reverbGain = audioCtx.createGain();
-                analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
-                const now = audioCtx.currentTime;
-                [noiseGain, marimbaMasterGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
-                noiseGain.gain.linearRampToValueAtTime(getNoiseGainValue(s.noiseVol.value), now + 1.5);
-                marimbaMasterGain.gain.linearRampToValueAtTime(getMelodyGainValue(s.marimbaVol.value), now + 1.5);
-                birdGain.gain.linearRampToValueAtTime(getBirdGainValue(s.birdVol.value), now + 1.5);
+                reverbNode = createReverb(); reverbGain = audioCtx.createGain(); analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
+                const n = audioCtx.currentTime; [noiseGain, marimbaMasterGain, birdGain].forEach(g => g.gain.setValueAtTime(0, n));
+                noiseGain.gain.linearRampToValueAtTime(getNoiseGain(s.noiseVol.value), n + 1.5);
+                marimbaMasterGain.gain.linearRampToValueAtTime(getMelodyGain(s.marimbaVol.value), n + 1.5);
+                birdGain.gain.linearRampToValueAtTime(getBirdGain(s.birdVol.value), n + 1.5);
                 reverbGain.gain.value = parseFloat(s.reverb.value);
-                scriptNode.onaudioprocess = (e) => {
-                    const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1);
-                    const sampleRate = audioCtx.sampleRate;
-                    const baseFreq = 0.85 - (waveWidth * 0.82);
-                    const incrA = (2 * Math.PI * baseFreq) / sampleRate, incrB = (2 * Math.PI * baseFreq * 0.73) / sampleRate, incrC = (2 * Math.PI * baseFreq * 1.41) / sampleRate;
-                    for (let i = 0; i < outL.length; i++) {
-                        phaseA += incrA; phaseB += incrB; phaseC += incrC;
-                        const modulation = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
-                        const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + modulation));
-                        const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1;
-                        const cL = wL, cR = (wR * stereoWidth) + (wL * (1 - stereoWidth));
+                scriptNode.onaudioprocess = (ev) => {
+                    const oL = ev.outputBuffer.getChannelData(0), oR = ev.outputBuffer.getChannelData(1), sr = audioCtx.sampleRate;
+                    const bF = 0.85 - (waveWidth * 0.82), iA = (2 * Math.PI * bF) / sr, iB = (2 * Math.PI * bF * 0.73) / sr, iC = (2 * Math.PI * bF * 1.41) / sr;
+                    for (let i = 0; i < oL.length; i++) {
+                        phaseA += iA; phaseB += iB; phaseC += iC;
+                        const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
+                        const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + mod));
+                        const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1, cL = wL, cR = (wR * stereoWidth) + (wL * (1 - stereoWidth));
                         const bL = (lastOutL * curF) + (cL * (1 - curF)), bR = (lastOutR * curF) + (cR * (1 - curF));
-                        outL[i] = bL; outR[i] = bR; lastOutL = bL; lastOutR = bR;
+                        oL[i] = bL; oR[i] = bR; lastOutL = bL; lastOutR = bR;
                     }
                 };
-                scriptNode.connect(noiseGain); noiseGain.connect(analyser);
-                marimbaMasterGain.connect(analyser); marimbaMasterGain.connect(reverbNode);
-                birdGain.connect(analyser); birdGain.connect(reverbNode);
-                reverbNode.connect(reverbGain); reverbGain.connect(analyser);
-                analyser.connect(audioCtx.destination);
-                const dArray = new Uint8Array(analyser.frequencyBinCount);
-                const maxIdx = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dArray.length);
+                scriptNode.connect(noiseGain); noiseGain.connect(analyser); marimbaMasterGain.connect(analyser); marimbaMasterGain.connect(reverbNode); birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser); analyser.connect(audioCtx.destination);
+                const dA = new Uint8Array(analyser.frequencyBinCount), mX = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dA.length);
                 const draw = () => {
-                    if (!isPlaying) return;
-                    requestAnimationFrame(draw); if (!isVisible) return;
-                    analyser.getByteFrequencyData(dArray);
-                    
-                    // 【アイデア2：うねり】全体の音量に応じて描画位置をわずかに左右に揺らす
-                    let rms = 0; for(let i=0; i<32; i++) rms += dArray[i]; rms /= 32;
-                    let drift = (rms / 255) * 4 * Math.sin(Date.now() * 0.002);
-
-                    tempCtx.drawImage(canvas, drift, 1);
-                    
+                    if (!isPlaying) return; requestAnimationFrame(draw); if (!isVisible) return;
+                    analyser.getByteFrequencyData(dA); tempCtx.drawImage(canvas, 0, 1);
+                    const sInt = parseFloat(s.sparkIntensity.value), sArea = 1.0 - parseFloat(s.sparkArea.value);
+                    const mDepth = parseFloat(s.mistDepth.value), mArea = 1.0 - parseFloat(s.mistArea.value);
                     for (let i = 0; i < canvas.width; i++) {
-                        const idx = Math.floor((i / canvas.width) * maxIdx);
-                        let val = dArray[idx];
-                        
-                        // 【アイデア3：薄墨の霧】右側（高音域）に滑らかな階調をブレンド
-                        if (i > canvas.width * 0.6) {
-                            let highFreqAvg = (dArray[idx] + dArray[idx-1] || val) / 2;
-                            val = Math.max(val, highFreqAvg * 0.4);
-                        }
-
-                        let gray = 255 - val;
-                        
-                        // 【アイデア1：またたき】高音域でランダムにドットを打つ
-                        if (i > canvas.width * 0.7 && val > 20 && Math.random() > 0.98) {
-                            gray = Math.max(0, gray - 50); 
-                        }
-
-                        const p = i * 4; imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255;
+                        const rPos = i / canvas.width; const idx = Math.floor(rPos * mX); let v = dA[idx];
+                        if (en.mist.checked && rPos > mArea) { v = Math.max(v, v * 0.5 + (dA[idx] * mDepth)); }
+                        let g = 255 - v;
+                        if (en.spark.checked && rPos > sArea && v > 20 && Math.random() > (1.0 - sInt * 0.05)) { g = Math.max(0, g - (sInt * 100)); }
+                        const p = i * 4; imgData.data[p] = g; imgData.data[p+1] = g; imgData.data[p+2] = g; imgData.data[p+3] = 255;
                     }
                     ctx.drawImage(tempCanvas, 0, 0); ctx.putImageData(imgData, 0, 0);
                 }
