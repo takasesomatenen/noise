@@ -99,7 +99,8 @@
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
 
-        const getNoiseGainValue = (val) => parseFloat(val) * 0.6;
+        // 【修正】最大音量をこれまでの約6割に抑制 (0.6 * 0.6 = 0.36)
+        const getNoiseGainValue = (val) => parseFloat(val) * 0.36;
 
         filterRange.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
         stereoRange.addEventListener('input', (e) => stereoWidth = parseFloat(e.target.value));
@@ -189,7 +190,6 @@
             } else {
                 isPlaying = true;
                 btn.classList.add('active');
-                // 出力チャンネルを2(ステレオ)に設定
                 scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
                 noiseGain = audioCtx.createGain();
                 marimbaMasterGain = audioCtx.createGain();
@@ -220,12 +220,9 @@
                         const modulation = rawMod * (waveHeight * 0.25); 
                         const currentFilter = Math.max(0.01, Math.min(0.99, baseFilterWeight + modulation));
 
-                        // 左右で別々のノイズ源を生成
                         const whiteL = Math.random() * 2 - 1;
                         const whiteR = Math.random() * 2 - 1;
                         
-                        // ステレオ幅に応じて左右を混ぜる (Mid-Side的なアプローチ)
-                        // stereoWidth 0 = 左右同じ, 1 = 左右完全独立
                         const combinedL = whiteL;
                         const combinedR = (whiteR * stereoWidth) + (whiteL * (1 - stereoWidth));
 
