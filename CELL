@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cellular Automata Simulation</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #eee;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        canvas {
+            border: 1px solid #444;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            cursor: crosshair;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #444;
+        }
+        button.active {
+            background: #007bff;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Cellular Automata: Game of Life</h2>
+    <canvas id="gridCanvas"></canvas>
+
+    <div class="controls">
+        <button id="startBtn">Start / Stop</button>
+        <button id="stepBtn">Next Step</button>
+        <button id="clearBtn">Clear</button>
+        <button id="randomBtn">Randomize</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stepBtn = document.getElementById('stepBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const randomBtn = document.getElementById('randomBtn');
+
+        // 設定
+        const resolution = 20; // セルのサイズ
+        canvas.width = 600;
+        canvas.height = 400;
+        const COLS = canvas.width / resolution;
+        const ROWS = canvas.height / resolution;
+
+        let grid = buildGrid();
+        let isRunning = false;
+
+        // グリッドの初期化（二次元配列）
+        function buildGrid() {
+            return new Array(COLS).fill(null)
+                .map(() => new Array(ROWS).fill(0));
+        }
+
+        // ランダム配置
+        function randomize() {
+            grid = new Array(COLS).fill(null)
+                .map(() => new Array(ROWS).fill(0)
+                .map(() => Math.random() > 0.8 ? 1 : 0));
+            draw();
+        }
+
+        // 次の世代の計算
+        function nextGen() {
+            const nextGrid = grid.map(arr => [...arr]);
+
+            for (let col = 0; col < COLS; col++) {
+                for (let row = 0; row < ROWS; row++) {
+                    const cell = grid[col][row];
+                    let numNeighbors = 0;
+
+                    // 周囲8マスの生存確認
+                    for (let i = -1; i < 2; i++) {
+                        for (let j = -1; j < 2; j++) {
+                            if (i === 0 && j === 0) continue;
+                            const x_cell = col + i;
+                            const y_cell = row + j;
+
+                            if (x_cell >= 0 && y_cell >= 0 && x_cell < COLS && y_cell < ROWS) {
+                                numNeighbors += grid[x_cell][y_cell];
+                            }
+                        }
+                    }
+
+                    // ライフゲームのルール
+                    if (cell === 1 && (numNeighbors < 2 || numNeighbors > 3)) {
+                        nextGrid[col][row] = 0; // 孤独または過密により死亡
+                    } else if (cell === 0 && numNeighbors === 3) {
+                        nextGrid[col][row] = 1; // 誕生
+                    }
+                }
+            }
+            grid = nextGrid;
+        }
+
+        // 描画
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let col = 0; col < COLS; col++) {
+                for (let row = 0; row < ROWS; row++) {
+                    const cell = grid[col][row];
+                    ctx.beginPath();
+                    ctx.rect(col * resolution, row * resolution, resolution, resolution);
+                    ctx.fillStyle = cell ? '#00ffcc' : '#222';
+                    ctx.fill();
+                    ctx.strokeStyle = '#333';
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // ループ処理
+        function update() {
+            if (!isRunning) return;
+            nextGen();
+            draw();
+            setTimeout(() => requestAnimationFrame(update), 100);
+        }
+
+        // イベントリスナー
+        canvas.addEventListener('mousedown', event => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((event.clientX - rect.left) / resolution);
+            const y = Math.floor((event.clientY - rect.top) / resolution);
+            grid[x][y] = grid[x][y] ? 0 : 1;
+            draw();
+        });
+
+        startBtn.addEventListener('click', () => {
+            isRunning = !isRunning;
+            startBtn.classList.toggle('active');
+            if (isRunning) update();
+        });
+
+        stepBtn.addEventListener('click', () => {
+            nextGen();
+            draw();
+        });
+
+        clearBtn.addEventListener('click', () => {
+            grid = buildGrid();
+            draw();
+        });
+
+        randomBtn.addEventListener('click', randomize);
+
+        draw();
+    </script>
+</body>
+</html>
