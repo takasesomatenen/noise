@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pure Flow - Nature Elements Mixer</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
-        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
+        /* キャンバスを画面全体に強制固定 */
+        canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
+        
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -50,7 +52,6 @@
     <canvas id="visualizer"></canvas>
     <div class="controls" id="panel">
         <button id="btn"></button>
-        
         <details>
             <summary><input type="checkbox" id="mistEnable" class="part-switch" checked><div class="summary-text">MIST</div></summary>
             <div class="slider-group">
@@ -61,7 +62,6 @@
                 <div class="slider-item"><div class="label">Flow Width</div><input type="range" id="waveWidthRange" min="0" max="1" step="0.01" value="0.7"></div>
             </div>
         </details>
-
         <details>
             <summary><input type="checkbox" id="dropEnable" class="part-switch" checked><div class="summary-text">DROP</div></summary>
             <div class="slider-group">
@@ -70,7 +70,6 @@
                 <div class="slider-item"><div class="label">Density</div><input type="range" id="intervalRange" min="100" max="3000" step="50" value="2000"></div>
             </div>
         </details>
-
         <details>
             <summary><input type="checkbox" id="birdEnable" class="part-switch" checked><div class="summary-text">BIRD</div></summary>
             <div class="slider-group">
@@ -80,7 +79,6 @@
             </div>
         </details>
     </div>
-
     <a href="https://www.instagram.com/point_circle_insta/" target="_blank" class="logo-container" id="logoLink">
         <div class="logo-text">DESIGNED BY <span class="logo-symbol"></span><span class="logo-symbol-outline"></span></div>
     </a>
@@ -90,6 +88,8 @@
         let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.3, stereoWidth = 0.5, waveHeight = 0.5, waveWidth = 0.7;
         let isPlaying = false, dropTimer, birdTimer, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
 
+        const btn = document.getElementById('btn');
+        const panel = document.getElementById('panel');
         const s = {
             mistVol: document.getElementById('mistVolRange'), filter: document.getElementById('filterRange'),
             stereo: document.getElementById('stereoRange'), waveHeight: document.getElementById('waveHeightRange'),
@@ -124,21 +124,29 @@
         s.mistVol.addEventListener('input', updateVolumes); s.dropVol.addEventListener('input', updateVolumes); s.birdVol.addEventListener('input', updateVolumes);
         s.reverb.addEventListener('input', (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); });
 
+        let imgData, tempCanvas, tempCtx;
+
         function resize() {
-            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-            if (tempCanvas) { tempCanvas.width = canvas.width; tempCanvas.height = canvas.height; }
-            prepareImageData();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            // CSSでの表示サイズはそのまま
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+
+            if (!tempCanvas) {
+                tempCanvas = document.createElement('canvas');
+                tempCtx = tempCanvas.getContext('2d');
+            }
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx.fillStyle = '#fff';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            
+            imgData = ctx.createImageData(canvas.width, 1);
         }
         window.addEventListener('resize', resize);
-
-        let imgData, tempCanvas, tempCtx;
-        function prepareImageData() {
-            imgData = ctx.createImageData(canvas.width, 1);
-            if (!tempCanvas) { tempCanvas = document.createElement('canvas'); tempCtx = tempCanvas.getContext('2d'); }
-            tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
-            tempCtx.fillStyle = '#fff'; tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-        }
-        prepareImageData(); resize();
+        resize();
 
         function createReverb() {
             const len = audioCtx.sampleRate * 4; const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
@@ -175,15 +183,15 @@
             birdTimer = setTimeout(() => playBird(nb), ni);
         }
 
-        document.getElementById('btn').addEventListener('click', async (e) => {
+        btn.addEventListener('click', async (e) => {
             e.stopPropagation(); if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             if (isPlaying) {
-                isPlaying = false; clearTimeout(dropTimer); clearTimeout(birdTimer); document.getElementById('btn').classList.remove('active');
+                isPlaying = false; clearTimeout(dropTimer); clearTimeout(birdTimer); btn.classList.remove('active');
                 const n = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, n, 0.2));
                 setTimeout(() => { if(scriptNode) scriptNode.disconnect(); if(analyser) analyser.disconnect(); scriptNode = null; }, 1000);
             } else {
-                isPlaying = true; document.getElementById('btn').classList.add('active');
+                isPlaying = true; btn.classList.add('active');
                 scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
                 mistGain = audioCtx.createGain(); dropGain = audioCtx.createGain(); birdGain = audioCtx.createGain();
                 reverbNode = createReverb(); reverbGain = audioCtx.createGain(); analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
@@ -198,7 +206,6 @@
                     for (let i = 0; i < oL.length; i++) {
                         phaseA += iA; phaseB += iB; phaseC += iC;
                         const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
-                        // 反転対応: ここで算出される curF (フィルター強度) をそのまま維持
                         const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + mod));
                         const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1, cL = wL, cR = (wR * stereoWidth) + (wL * (1 - stereoWidth));
                         const bL = (lastOutL * curF) + (cL * (1 - curF)), bR = (lastOutR * curF) + (cR * (1 - curF));
