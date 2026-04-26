@@ -65,7 +65,7 @@
             <summary><input type="checkbox" id="dropEnable" class="part-switch" checked><div class="summary-text">DROP</div></summary>
             <div class="slider-group">
                 <div class="slider-item"><div class="label">Volume</div><input type="range" id="dropVolRange" min="0" max="1" step="0.01" value="0.3"></div>
-                <div class="slider-item"><div class="label">Count</div><input type="range" id="dropCountRange" min="1" max="5" step="1" value="1"></div>
+                <div class="slider-item"><div class="label" id="dropCountLabel">Count (1)</div><input type="range" id="dropCountRange" min="1" max="5" step="1" value="1"></div>
                 <div class="slider-item"><div class="label">Resonance</div><input type="range" id="reverbRange" min="0" max="1" step="0.01" value="0.5"></div>
                 <div class="slider-item"><div class="label">Density</div><input type="range" id="intervalRange" min="100" max="3000" step="50" value="2000"></div>
                 <div class="slider-item"><div class="label">Stereo Width</div><input type="range" id="dropWidthRange" min="0" max="1" step="0.01" value="0.3"></div>
@@ -76,7 +76,8 @@
             <summary><input type="checkbox" id="birdEnable" class="part-switch" checked><div class="summary-text">BIRD</div></summary>
             <div class="slider-group">
                 <div class="slider-item"><div class="label">Volume</div><input type="range" id="birdVolRange" min="0" max="1" step="0.01" value="0.25"></div>
-                <div class="slider-item"><div class="label">Count</div><input type="range" id="birdCountRange" min="1" max="5" step="1" value="1"></div>
+                <div class="slider-item"><div class="label" id="birdCountLabel">Count (1)</div><input type="range" id="birdCountRange" min="1" max="5" step="1" value="1"></div>
+                <div class="slider-item"><div class="label">Resonance</div><input type="range" id="birdReverbRange" min="0" max="1" step="0.01" value="0.5"></div>
                 <div class="slider-item"><div class="label">Chirp Speed</div><input type="range" id="birdPitchSpeedRange" min="0.05" max="0.5" step="0.01" value="0.15"></div>
                 <div class="slider-item"><div class="label">Density</div><input type="range" id="birdIntervalRange" min="100" max="3000" step="50" value="1500"></div>
                 <div class="slider-item"><div class="label">Stereo Width</div><input type="range" id="birdWidthRange" min="0" max="1" step="0.01" value="0.6"></div>
@@ -89,11 +90,10 @@
     </a>
 
     <script>
-        let audioCtx, scriptNode, mistGain, dropGain, birdGain, reverbNode, reverbGain, analyser;
-        let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.3, stereoWidth = 0.5, waveHeight = 0.5, waveWidth = 0.7;
+        let audioCtx, scriptNode, mistGain, dropGain, birdGain, reverbNode, reverbGain, birdReverbGain, birdReverbNode, analyser;
+        let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.5, stereoWidth = 0.5, waveHeight = 0.5, waveWidth = 0.7;
         let isPlaying = false, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
         
-        // 複数音源シミュレート用のタイマー配列
         let dropTimers = [null, null, null, null, null];
         let birdTimers = [null, null, null, null, null];
 
@@ -107,6 +107,7 @@
             reverb: document.getElementById('reverbRange'), interval: document.getElementById('intervalRange'),
             dropWidth: document.getElementById('dropWidthRange'), dropWidthRand: document.getElementById('dropWidthRandRange'),
             birdVol: document.getElementById('birdVolRange'), birdCount: document.getElementById('birdCountRange'),
+            birdReverb: document.getElementById('birdReverbRange'),
             birdPitchSpeed: document.getElementById('birdPitchSpeedRange'), birdInterval: document.getElementById('birdIntervalRange'),
             birdWidth: document.getElementById('birdWidthRange'), birdWidthRand: document.getElementById('birdWidthRandRange')
         };
@@ -120,6 +121,10 @@
         document.addEventListener('visibilitychange', () => { isVisible = (document.visibilityState === 'visible'); });
         canvas.addEventListener('click', () => { document.getElementById('panel').classList.toggle('hidden'); });
         [en.mist, en.drop, en.bird].forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); updateVolumes(); }));
+
+        // Countラベルのリアルタイム更新
+        s.dropCount.addEventListener('input', (e) => { document.getElementById('dropCountLabel').innerText = `Count (${e.target.value})`; });
+        s.birdCount.addEventListener('input', (e) => { document.getElementById('birdCountLabel').innerText = `Count (${e.target.value})`; });
 
         function updateVolumes() {
             if (!isPlaying || !audioCtx) return;
@@ -135,9 +140,9 @@
         s.waveWidth.addEventListener('input', (e) => waveWidth = parseFloat(e.target.value));
         s.mistVol.addEventListener('input', updateVolumes); s.dropVol.addEventListener('input', updateVolumes); s.birdVol.addEventListener('input', updateVolumes);
         s.reverb.addEventListener('input', (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); });
+        s.birdReverb.addEventListener('input', (e) => { if (birdReverbGain && isPlaying) birdReverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); });
 
         let imgData, tempCanvas, tempCtx;
-
         function resize() {
             const dpr = window.devicePixelRatio || 1;
             canvas.width = Math.floor(window.innerWidth * dpr);
@@ -159,10 +164,8 @@
 
         const scale = [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00, 2349.32, 2637.02, 3135.96, 3520.00];
 
-        // 汎用パナー作成関数（WidthとRandomness対応）
         function createPanner(baseWidth, randomness) {
             const panner = audioCtx.createStereoPanner();
-            // 基本の広がり + ランダムな偏り
             const randOffset = (Math.random() * 2 - 1) * randomness;
             const panValue = Math.max(-1, Math.min(1, randOffset * baseWidth));
             panner.pan.setValueAtTime(panValue, audioCtx.currentTime);
@@ -172,82 +175,36 @@
         function playDrop(id) {
             if (!isPlaying) return;
             const currentCount = parseInt(s.dropCount.value);
-            if (!en.drop.checked || id >= currentCount) { 
-                dropTimers[id] = setTimeout(() => playDrop(id), 500); 
-                return; 
-            }
-
-            const n = audioCtx.currentTime;
-            const f = scale[Math.floor(Math.random() * scale.length)];
-            const osc = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
+            if (!en.drop.checked || id >= currentCount) { dropTimers[id] = setTimeout(() => playDrop(id), 500); return; }
+            const n = audioCtx.currentTime; const f = scale[Math.floor(Math.random() * scale.length)];
+            const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
             const panner = createPanner(parseFloat(s.dropWidth.value), parseFloat(s.dropWidthRand.value));
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(f * 2, n);
-            osc.frequency.exponentialRampToValueAtTime(f, n + 0.02);
-
-            const interval = 3100 - (parseInt(s.interval.value) || 2000);
-            const decay = Math.min(1.2, (interval / 1000) + 0.1);
-
-            g.gain.setValueAtTime(0, n);
-            g.gain.linearRampToValueAtTime(0.3, n + 0.005);
-            g.gain.exponentialRampToValueAtTime(0.001, n + decay);
-
-            osc.connect(g);
-            g.connect(panner);
-            panner.connect(dropGain);
-            
-            osc.start(n);
-            osc.stop(n + decay + 0.1);
-
+            osc.type = 'sine'; osc.frequency.setValueAtTime(f * 2, n); osc.frequency.exponentialRampToValueAtTime(f, n + 0.02);
+            const interval = 3100 - (parseInt(s.interval.value) || 2000); const decay = Math.min(1.2, (interval / 1000) + 0.1);
+            g.gain.setValueAtTime(0, n); g.gain.linearRampToValueAtTime(0.3, n + 0.005); g.gain.exponentialRampToValueAtTime(0.001, n + decay);
+            osc.connect(g); g.connect(panner); panner.connect(dropGain);
+            osc.start(n); osc.stop(n + decay + 0.1);
             dropTimers[id] = setTimeout(() => playDrop(id), interval * (Math.random() * 0.4 + 0.8));
         }
 
         function playBird(id, bc = 0) {
             if (!isPlaying) return;
             const currentCount = parseInt(s.birdCount.value);
-            if (!en.bird.checked || id >= currentCount) { 
-                birdTimers[id] = setTimeout(() => playBird(id, 0), 500); 
-                return; 
-            }
-
-            const n = audioCtx.currentTime;
-            const bs = scale.slice(15);
+            if (!en.bird.checked || id >= currentCount) { birdTimers[id] = setTimeout(() => playBird(id, 0), 500); return; }
+            const n = audioCtx.currentTime; const bs = scale.slice(15);
             const f = bs[Math.floor(Math.random() * bs.length)] * (0.95 + Math.random() * 0.1);
-            const osc = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
+            const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
             const panner = createPanner(parseFloat(s.birdWidth.value), parseFloat(s.birdWidthRand.value));
-
             osc.type = 'sine';
             const st = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
-            osc.frequency.setValueAtTime(f * (Math.random() > 0.5 ? 1.5 : 0.7), n);
-            osc.frequency.exponentialRampToValueAtTime(f, n + st);
-
-            g.gain.setValueAtTime(0, n);
-            g.gain.linearRampToValueAtTime(0.2, n + 0.01);
-            g.gain.exponentialRampToValueAtTime(0.001, n + st + 0.05);
-
-            osc.connect(g);
-            g.connect(panner);
-            panner.connect(birdGain);
-
-            osc.start(n);
-            osc.stop(n + st + 0.1);
-
+            osc.frequency.setValueAtTime(f * (Math.random() > 0.5 ? 1.5 : 0.7), n); osc.frequency.exponentialRampToValueAtTime(f, n + st);
+            g.gain.setValueAtTime(0, n); g.gain.linearRampToValueAtTime(0.2, n + 0.01); g.gain.exponentialRampToValueAtTime(0.001, n + st + 0.05);
+            osc.connect(g); g.connect(panner); panner.connect(birdGain);
+            osc.start(n); osc.stop(n + st + 0.1);
             let nb = 0, ni = 0;
-            if (bc > 0) {
-                nb = bc - 1;
-                ni = 50 + Math.random() * 100;
-            } else {
-                if (Math.random() > 0.7) {
-                    nb = Math.floor(Math.random() * 4) + 1;
-                    ni = 80;
-                } else {
-                    nb = 0;
-                    ni = (3100 - (parseInt(s.birdInterval.value) || 1500)) * (0.6 + Math.random() * 0.7);
-                }
-            }
+            if (bc > 0) { nb = bc - 1; ni = 50 + Math.random() * 100; }
+            else { if (Math.random() > 0.7) { nb = Math.floor(Math.random() * 4) + 1; ni = 80; }
+            else { nb = 0; ni = (3100 - (parseInt(s.birdInterval.value) || 1500)) * (0.6 + Math.random() * 0.7); } }
             birdTimers[id] = setTimeout(() => playBird(id, nb), ni);
         }
 
@@ -255,55 +212,52 @@
             e.stopPropagation(); if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             if (isPlaying) {
-                isPlaying = false; 
-                dropTimers.forEach(clearTimeout);
-                birdTimers.forEach(clearTimeout);
-                btn.classList.remove('active');
-                const n = audioCtx.currentTime; 
-                [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, n, 0.2));
+                isPlaying = false; dropTimers.forEach(clearTimeout); birdTimers.forEach(clearTimeout); btn.classList.remove('active');
+                const n = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, n, 0.2));
                 setTimeout(() => { if(scriptNode) scriptNode.disconnect(); if(analyser) analyser.disconnect(); scriptNode = null; }, 1000);
             } else {
                 isPlaying = true; btn.classList.add('active');
                 scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
                 mistGain = audioCtx.createGain(); dropGain = audioCtx.createGain(); birdGain = audioCtx.createGain();
-                reverbNode = createReverb(); reverbGain = audioCtx.createGain(); analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
+                reverbNode = createReverb(); reverbGain = audioCtx.createGain();
+                birdReverbNode = createReverb(); birdReverbGain = audioCtx.createGain();
+                analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
                 const n = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, n));
                 mistGain.gain.linearRampToValueAtTime(getMistGain(s.mistVol.value), n + 1.5);
                 dropGain.gain.linearRampToValueAtTime(getDropGain(s.dropVol.value), n + 1.5);
                 birdGain.gain.linearRampToValueAtTime(getBirdGain(s.birdVol.value), n + 1.5);
                 reverbGain.gain.value = parseFloat(s.reverb.value);
+                birdReverbGain.gain.value = parseFloat(s.birdReverb.value);
                 scriptNode.onaudioprocess = (ev) => {
                     const oL = ev.outputBuffer.getChannelData(0), oR = ev.outputBuffer.getChannelData(1), sr = audioCtx.sampleRate;
                     const bF = 0.85 - (waveWidth * 0.82), iA = (2 * Math.PI * bF) / sr, iB = (2 * Math.PI * bF * 0.73) / sr, iC = (2 * Math.PI * bF * 1.41) / sr;
-                    const actualFilterWeight = 1.0 - baseFilterWeight;
+                    const actF = 1.0 - baseFilterWeight;
                     for (let i = 0; i < oL.length; i++) {
                         phaseA += iA; phaseB += iB; phaseC += iC;
                         const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
-                        const curF = Math.max(0.01, Math.min(0.99, actualFilterWeight + mod));
+                        const curF = Math.max(0.01, Math.min(0.99, actF + mod));
                         const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1, cL = wL, cR = (wR * stereoWidth) + (wL * (1 - stereoWidth));
                         const bL = (lastOutL * curF) + (cL * (1 - curF)), bR = (lastOutR * curF) + (cR * (1 - curF));
                         oL[i] = bL; oR[i] = bR; lastOutL = bL; lastOutR = bR;
                     }
                 };
-                scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode); birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser); analyser.connect(audioCtx.destination);
-                const dA = new Uint8Array(analyser.frequencyBinCount), mX = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dA.length);
+                scriptNode.connect(mistGain); mistGain.connect(analyser); 
+                dropGain.connect(analyser); dropGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser);
+                birdGain.connect(analyser); birdGain.connect(birdReverbNode); birdReverbNode.connect(birdReverbGain); birdReverbGain.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                const dA = new Uint8Array(analyser.frequencyBinCount);
                 const draw = () => {
                     if (!isPlaying) return; requestAnimationFrame(draw); if (!isVisible) return;
                     analyser.getByteFrequencyData(dA); tempCtx.drawImage(canvas, 0, 1);
-                    const totalWidth = canvas.width;
-                    for (let i = 0; i < totalWidth; i++) {
-                        const idx = Math.floor((i / totalWidth) * (dA.length * 0.9));
+                    const tw = canvas.width;
+                    for (let i = 0; i < tw; i++) {
+                        const idx = Math.floor((i / tw) * (dA.length * 0.9));
                         const gray = 255 - dA[idx];
                         const p = i * 4; imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255;
                     }
                     ctx.drawImage(tempCanvas, 0, 0); ctx.putImageData(imgData, 0, 0);
                 }
-                draw(); 
-                // 個数分だけ再生開始
-                for(let i=0; i<5; i++) {
-                    playDrop(i);
-                    playBird(i);
-                }
+                draw(); for(let i=0; i<5; i++) { playDrop(i); playBird(i); }
             }
         });
     </script>
