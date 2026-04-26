@@ -55,7 +55,7 @@
             <summary><input type="checkbox" id="mistEnable" class="part-switch" checked><div class="summary-text">MIST</div></summary>
             <div class="slider-group">
                 <div class="slider-item"><div class="label">Volume</div><input type="range" id="mistVolRange" min="0" max="1" step="0.01" value="0.4"></div>
-                <div class="slider-item"><div class="label">Color (Density)</div><input type="range" id="filterRange" min="0.2" max="0.8" step="0.01" value="0.3"></div>
+                <div class="slider-item"><div class="label">Color (Density)</div><input type="range" id="filterRange" min="0.2" max="0.8" step="0.01" value="0.5"></div>
                 <div class="slider-item"><div class="label">Stereo Width</div><input type="range" id="stereoRange" min="0" max="1" step="0.01" value="0.5"></div>
                 <div class="slider-item"><div class="label">Flow Height</div><input type="range" id="waveHeightRange" min="0" max="1" step="0.01" value="0.5"></div>
                 <div class="slider-item"><div class="label">Flow Width</div><input type="range" id="waveWidthRange" min="0" max="1" step="0.01" value="0.7"></div>
@@ -84,7 +84,7 @@
 
     <script>
         let audioCtx, scriptNode, mistGain, dropGain, birdGain, reverbNode, reverbGain, analyser;
-        let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.3, stereoWidth = 0.5, waveHeight = 0.5, waveWidth = 0.7;
+        let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.5, stereoWidth = 0.5, waveHeight = 0.5, waveWidth = 0.7;
         let isPlaying = false, dropTimer, birdTimer, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
 
         const btn = document.getElementById('btn');
@@ -127,11 +127,8 @@
 
         function resize() {
             const dpr = window.devicePixelRatio || 1;
-            // 物理ピクセルサイズを設定
             canvas.width = Math.floor(window.innerWidth * dpr);
             canvas.height = Math.floor(window.innerHeight * dpr);
-            
-            // 論理サイズ（表示上のサイズ）を設定
             canvas.style.width = window.innerWidth + 'px';
             canvas.style.height = window.innerHeight + 'px';
 
@@ -144,7 +141,6 @@
             tempCtx.fillStyle = '#fff';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             
-            // imageDataも物理サイズに合わせる
             imgData = ctx.createImageData(canvas.width, 1);
         }
         window.addEventListener('resize', resize);
@@ -205,10 +201,19 @@
                 scriptNode.onaudioprocess = (ev) => {
                     const oL = ev.outputBuffer.getChannelData(0), oR = ev.outputBuffer.getChannelData(1), sr = audioCtx.sampleRate;
                     const bF = 0.85 - (waveWidth * 0.82), iA = (2 * Math.PI * bF) / sr, iB = (2 * Math.PI * bF * 0.73) / sr, iC = (2 * Math.PI * bF * 1.41) / sr;
+                    
+                    // スライダーの値を反転させて計算に使用する
+                    // スライダー(baseFilterWeight)が 0.2 (左) のとき -> 実質 0.8 (こもる)
+                    // スライダー(baseFilterWeight)が 0.8 (右) のとき -> 実質 0.2 (クリア)
+                    const actualFilterWeight = 1.0 - baseFilterWeight;
+
                     for (let i = 0; i < oL.length; i++) {
                         phaseA += iA; phaseB += iB; phaseC += iC;
                         const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
-                        const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + mod));
+                        
+                        // 反転させた値を使ってフィルター強度を決定
+                        const curF = Math.max(0.01, Math.min(0.99, actualFilterWeight + mod));
+                        
                         const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1, cL = wL, cR = (wR * stereoWidth) + (wL * (1 - stereoWidth));
                         const bL = (lastOutL * curF) + (cL * (1 - curF)), bR = (lastOutR * curF) + (cR * (1 - curF));
                         oL[i] = bL; oR[i] = bR; lastOutL = bL; lastOutR = bR;
@@ -216,27 +221,17 @@
                 };
                 scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode); birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser); analyser.connect(audioCtx.destination);
                 const dA = new Uint8Array(analyser.frequencyBinCount);
-                // 描画ループ
                 const draw = () => {
                     if (!isPlaying) return; requestAnimationFrame(draw); if (!isVisible) return;
                     analyser.getByteFrequencyData(dA); tempCtx.drawImage(canvas, 0, 1);
-                    
-                    // 【修正箇所】物理ピクセル数（canvas.width）に基づいてループを回す
                     const totalWidth = canvas.width;
                     for (let i = 0; i < totalWidth; i++) {
-                        // 周波数データのインデックス計算（0.0〜1.0）
                         const ratio = i / totalWidth;
-                        // 可聴域に基づいたインデックス（高音域までカバー）
                         const idx = Math.floor(ratio * (dA.length * 0.9)); 
                         const gray = 255 - dA[idx];
-                        const p = i * 4;
-                        imgData.data[p] = gray;
-                        imgData.data[p+1] = gray;
-                        imgData.data[p+2] = gray;
-                        imgData.data[p+3] = 255;
+                        const p = i * 4; imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255;
                     }
-                    ctx.drawImage(tempCanvas, 0, 0); 
-                    ctx.putImageData(imgData, 0, 0);
+                    ctx.drawImage(tempCanvas, 0, 0); ctx.putImageData(imgData, 0, 0);
                 }
                 draw(); playDrop(); playBird();
             }
