@@ -114,10 +114,10 @@
         const en = { mist: document.getElementById('mistEnable'), drop: document.getElementById('dropEnable'), bird: document.getElementById('birdEnable') };
         const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
         
-        // 【修正】音量をさらに強化
-        const getMistGain = (v) => en.mist.checked ? parseFloat(v) * 0.36 : 0;
-        const getDropGain = (v) => en.drop.checked ? parseFloat(v) * 0.8 : 0; // 0.5 -> 0.8 (約1.6倍)
-        const getBirdGain = (v) => en.bird.checked ? parseFloat(v) * 0.5 : 0; // 0.3 -> 0.5 (約1.6倍)
+        // 【修正】MISTの音量を抑えめに調整（0.36 -> 0.22）
+        const getMistGain = (v) => en.mist.checked ? parseFloat(v) * 0.22 : 0;
+        const getDropGain = (v) => en.drop.checked ? parseFloat(v) * 0.8 : 0;
+        const getBirdGain = (v) => en.bird.checked ? parseFloat(v) * 0.5 : 0;
 
         document.addEventListener('visibilitychange', () => { isVisible = (document.visibilityState === 'visible'); });
         canvas.addEventListener('click', () => { document.getElementById('panel').classList.toggle('hidden'); });
