@@ -6,7 +6,6 @@
     <title>Pure Flow - Nature Elements Mixer</title>
     <style>
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
-        /* キャンバスを画面全体に強制固定 */
         canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
         
         .controls {
@@ -128,9 +127,11 @@
 
         function resize() {
             const dpr = window.devicePixelRatio || 1;
-            canvas.width = window.innerWidth * dpr;
-            canvas.height = window.innerHeight * dpr;
-            // CSSでの表示サイズはそのまま
+            // 物理ピクセルサイズを設定
+            canvas.width = Math.floor(window.innerWidth * dpr);
+            canvas.height = Math.floor(window.innerHeight * dpr);
+            
+            // 論理サイズ（表示上のサイズ）を設定
             canvas.style.width = window.innerWidth + 'px';
             canvas.style.height = window.innerHeight + 'px';
 
@@ -143,6 +144,7 @@
             tempCtx.fillStyle = '#fff';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             
+            // imageDataも物理サイズに合わせる
             imgData = ctx.createImageData(canvas.width, 1);
         }
         window.addEventListener('resize', resize);
@@ -213,16 +215,28 @@
                     }
                 };
                 scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode); birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser); analyser.connect(audioCtx.destination);
-                const dA = new Uint8Array(analyser.frequencyBinCount), mX = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dA.length);
+                const dA = new Uint8Array(analyser.frequencyBinCount);
+                // 描画ループ
                 const draw = () => {
                     if (!isPlaying) return; requestAnimationFrame(draw); if (!isVisible) return;
                     analyser.getByteFrequencyData(dA); tempCtx.drawImage(canvas, 0, 1);
-                    for (let i = 0; i < canvas.width; i++) {
-                        const idx = Math.floor((i / canvas.width) * mX);
+                    
+                    // 【修正箇所】物理ピクセル数（canvas.width）に基づいてループを回す
+                    const totalWidth = canvas.width;
+                    for (let i = 0; i < totalWidth; i++) {
+                        // 周波数データのインデックス計算（0.0〜1.0）
+                        const ratio = i / totalWidth;
+                        // 可聴域に基づいたインデックス（高音域までカバー）
+                        const idx = Math.floor(ratio * (dA.length * 0.9)); 
                         const gray = 255 - dA[idx];
-                        const p = i * 4; imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255;
+                        const p = i * 4;
+                        imgData.data[p] = gray;
+                        imgData.data[p+1] = gray;
+                        imgData.data[p+2] = gray;
+                        imgData.data[p+3] = 255;
                     }
-                    ctx.drawImage(tempCanvas, 0, 0); ctx.putImageData(imgData, 0, 0);
+                    ctx.drawImage(tempCanvas, 0, 0); 
+                    ctx.putImageData(imgData, 0, 0);
                 }
                 draw(); playDrop(); playBird();
             }
