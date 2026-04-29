@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pure Flow - iOS Fixed Ambient Mixer</title>
+    <title>Pure Flow - Immersive Organic Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
-        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
+        canvas#visualizer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
+        
         .controls {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px;
@@ -15,22 +16,30 @@
             box-shadow: 0 10px 40px rgba(0,0,0,0.08);
             max-height: 90vh; overflow-y: auto;
             transition: opacity 0.4s ease, transform 0.4s ease;
+            pointer-events: auto;
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
-        button#btn { 
-            width: 50px; height: 50px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); 
-            background: #fff; cursor: pointer; transition: all 0.3s ease; outline: none; margin-bottom: 10px;
+
+        /* 再生ボタンエリアのラップ */
+        .play-wrapper {
+            position: relative; width: 60px; height: 60px; margin-bottom: 10px; cursor: pointer;
         }
-        button#btn.active { background: #000; border-color: #000; transform: scale(0.9); }
+        /* 中心のボタン（透明にして、背後のCanvasをクリッカブルに） */
+        button#btn { 
+            position: absolute; top: 0; left: 0; width: 60px; height: 60px; border-radius: 50%; 
+            border: none; background: transparent; outline: none; z-index: 12; cursor: pointer;
+        }
+        /* ボタン内部のインジケーターCanvas */
+        canvas#btnVisualizer {
+            position: absolute; top: 0; left: 0; width: 60px; height: 60px; z-index: 11; pointer-events: none;
+        }
+
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
-        details:last-child { border-bottom: none; }
         summary { 
             color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; 
             cursor: pointer; outline: none; list-style: none; padding: 5px;
-            display: flex; align-items: center; justify-content: flex-start;
-            opacity: 0.7; transition: opacity 0.3s;
+            display: flex; align-items: center; justify-content: flex-start; opacity: 0.7;
         }
-        summary:hover { opacity: 1; }
         .part-switch { margin-right: 12px; width: 14px; height: 14px; cursor: pointer; accent-color: #000; }
         .summary-text { flex-grow: 1; display: flex; justify-content: space-between; align-items: center; }
         .summary-text::after { content: '＋'; font-weight: normal; font-size: 10px; margin-left: 10px; }
@@ -51,7 +60,11 @@
 <body>
     <canvas id="visualizer"></canvas>
     <div class="controls" id="panel">
-        <button id="btn"></button>
+        <div class="play-wrapper">
+            <canvas id="btnVisualizer"></canvas>
+            <button id="btn"></button>
+        </div>
+        
         <details>
             <summary><input type="checkbox" id="noiseEnable" class="part-switch" checked><div class="summary-text">NOISE</div></summary>
             <div class="slider-group">
@@ -89,6 +102,7 @@
         let isPlaying = false, marimbaTimer, birdTimer, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
 
         const btn = document.getElementById('btn'), panel = document.getElementById('panel');
+        const btnCanvas = document.getElementById('btnVisualizer'), btnCtx = btnCanvas.getContext('2d');
         const noiseEnable = document.getElementById('noiseEnable'), melodyEnable = document.getElementById('melodyEnable'), birdEnable = document.getElementById('birdEnable');
         const s = {
             noiseVol: document.getElementById('noiseVolRange'), filter: document.getElementById('filterRange'), stereo: document.getElementById('stereoRange'),
@@ -124,6 +138,7 @@
         function resize() {
             canvas.width = window.innerWidth; canvas.height = window.innerHeight;
             if (tempCanvas) { tempCanvas.width = canvas.width; tempCanvas.height = canvas.height; }
+            btnCanvas.width = 120; btnCanvas.height = 120; // 内部解像度を高めに
             prepareImageData();
         }
         window.addEventListener('resize', resize);
@@ -180,22 +195,63 @@
             birdTimer = setTimeout(() => playBird(nextBurst), nextInterval);
         }
 
-        // iOS対応: ユーザーインタラクションの瞬間にAudioContextを完全に有効化する
+        // ボタンのビジュアル描画ループ
+        function drawButtonVisual() {
+            btnCtx.clearRect(0, 0, btnCanvas.width, btnCanvas.height);
+            const cx = btnCanvas.width / 2;
+            const cy = btnCanvas.height / 2;
+            const baseRadius = 25;
+
+            btnCtx.beginPath();
+            btnCtx.fillStyle = '#000';
+
+            if (!isPlaying || !analyser) {
+                // 停止時は静かな円
+                btnCtx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
+                btnCtx.fill();
+            } else {
+                const data = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(data);
+
+                // 低中域のデータ（最初の64個程度）をサンプリング
+                const points = 64;
+                const slice = Math.floor(data.length / 4 / points); 
+                
+                btnCtx.moveTo(cx, cy - baseRadius);
+
+                // 万華鏡（シンメトリー）方式：右半分を計算し、左半分に反転コピー
+                for (let i = 0; i <= points; i++) {
+                    const angle = (i / points) * Math.PI; // 0 to 180 degrees (右半分)
+                    const v = data[i * slice] / 255;
+                    const r = baseRadius + (v * 15); // 音圧で半径を最大15px膨らませる
+                    
+                    const x = cx + Math.sin(angle) * r;
+                    const y = cy - Math.cos(angle) * r;
+                    btnCtx.lineTo(x, y);
+                }
+                for (let i = points; i >= 0; i--) {
+                    const angle = (i / points) * Math.PI; // 180 down to 0 (左半分)
+                    const v = data[i * slice] / 255;
+                    const r = baseRadius + (v * 15);
+                    
+                    const x = cx - Math.sin(angle) * r;
+                    const y = cy - Math.cos(angle) * r;
+                    btnCtx.lineTo(x, y);
+                }
+                btnCtx.closePath();
+                btnCtx.fill();
+            }
+            requestAnimationFrame(drawButtonVisual);
+        }
+        drawButtonVisual();
+
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            // iOS向けの「叩き起こし」バッファ
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') {
                 await audioCtx.resume();
-                // 無音を再生してオーディオチャンネルをこじ開ける
-                const dummy = audioCtx.createBufferSource();
-                dummy.buffer = audioCtx.createBuffer(1, 1, 22050);
-                dummy.connect(audioCtx.destination);
-                dummy.start(0);
+                const dummy = audioCtx.createOscillator(), dG = audioCtx.createGain();
+                dG.gain.setValueAtTime(0, audioCtx.currentTime); dummy.connect(dG); dG.connect(audioCtx.destination); dummy.start(0); dummy.stop(0.001);
             }
 
             if (isPlaying) {
