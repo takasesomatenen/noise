@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pure Flow - MIST DROP BIRD Mixer</title>
+    <title>Pure Flow - Full Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
         canvas#visualizer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
@@ -17,9 +17,10 @@
             transition: opacity 0.4s ease, transform 0.4s ease;
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
-        .play-wrapper { position: relative; width: 90px; height: 90px; margin-bottom: 10px; cursor: pointer; }
-        button#btn { position: absolute; top: 0; left: 0; width: 90px; height: 90px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
-        canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 90px; height: 90px; z-index: 11; pointer-events: none; }
+        .play-wrapper { position: relative; width: 135px; height: 135px; margin-bottom: 10px; cursor: pointer; }
+        button#btn { position: absolute; top: 0; left: 0; width: 135px; height: 135px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
+        canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 135px; height: 135px; z-index: 11; pointer-events: none; }
+        
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
         summary { color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; cursor: pointer; outline: none; list-style: none; padding: 5px; display: flex; align-items: center; justify-content: flex-start; opacity: 0.7; }
         .part-switch { margin-right: 12px; width: 14px; height: 14px; cursor: pointer; accent-color: #000; }
@@ -85,11 +86,19 @@
         const btn = document.getElementById('btn'), panel = document.getElementById('panel');
         const btnCanvas = document.getElementById('btnVisualizer'), btnCtx = btnCanvas.getContext('2d');
         const mistEnable = document.getElementById('mistEnable'), dropEnable = document.getElementById('dropEnable'), birdEnable = document.getElementById('birdEnable');
+        
         const s = {
-            mistVol: document.getElementById('mistVolRange'), filter: document.getElementById('filterRange'), stereo: document.getElementById('stereoRange'),
-            waveHeight: document.getElementById('waveHeightRange'), waveWidth: document.getElementById('waveWidthRange'), dropVol: document.getElementById('dropVolRange'),
-            reverb: document.getElementById('reverbRange'), dropInterval: document.getElementById('dropIntervalRange'), birdVol: document.getElementById('birdVolRange'),
-            birdPitchSpeed: document.getElementById('birdPitchSpeedRange'), birdInterval: document.getElementById('birdIntervalRange')
+            mistVol: document.getElementById('mistVolRange'), 
+            filter: document.getElementById('filterRange'), 
+            stereo: document.getElementById('stereoRange'),
+            waveHeight: document.getElementById('waveHeightRange'), 
+            waveWidth: document.getElementById('waveWidthRange'), 
+            dropVol: document.getElementById('dropVolRange'),
+            reverb: document.getElementById('reverbRange'), 
+            dropInterval: document.getElementById('dropIntervalRange'), 
+            birdVol: document.getElementById('birdVolRange'),
+            birdPitchSpeed: document.getElementById('birdPitchSpeedRange'), 
+            birdInterval: document.getElementById('birdIntervalRange')
         };
         const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
 
@@ -119,7 +128,7 @@
         function resize() {
             canvas.width = window.innerWidth; canvas.height = window.innerHeight;
             if (tempCanvas) { tempCanvas.width = canvas.width; tempCanvas.height = canvas.height; }
-            btnCanvas.width = 180; btnCanvas.height = 180;
+            btnCanvas.width = 270; btnCanvas.height = 270;
             prepareImageData();
         }
         window.addEventListener('resize', resize);
@@ -178,7 +187,7 @@
 
         function drawButtonVisual() {
             btnCtx.clearRect(0, 0, btnCanvas.width, btnCanvas.height);
-            const cx = btnCanvas.width / 2, cy = btnCanvas.height / 2, baseRadius = 37.5;
+            const cx = btnCanvas.width / 2, cy = btnCanvas.height / 2, baseRadius = 56;
             btnCtx.beginPath(); btnCtx.fillStyle = '#000';
             if (!isPlaying || !analyser) { btnCtx.arc(cx, cy, baseRadius, 0, Math.PI * 2); btnCtx.fill(); } 
             else {
@@ -186,11 +195,11 @@
                 const points = 64, slice = Math.floor(data.length / 4 / points); 
                 btnCtx.moveTo(cx, cy - baseRadius);
                 for (let i = 0; i <= points; i++) {
-                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 22); 
+                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 33); 
                     btnCtx.lineTo(cx + Math.sin(angle) * r, cy - Math.cos(angle) * r);
                 }
                 for (let i = points; i >= 0; i--) {
-                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 22);
+                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 33);
                     btnCtx.lineTo(cx - Math.sin(angle) * r, cy - Math.cos(angle) * r);
                 }
                 btnCtx.closePath(); btnCtx.fill();
@@ -212,61 +221,39 @@
                 isPlaying = false; clearTimeout(dropTimer); clearTimeout(birdTimer); btn.classList.remove('active');
                 const now = audioCtx.currentTime;
                 [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, now, 0.2));
-                
                 setTimeout(() => { 
-                    if(scriptNode) scriptNode.disconnect(); 
-                    if(analyser) analyser.disconnect(); 
-                    scriptNode = null; 
-                    // 停止時に状態変数を明示的にクリーンアップ
-                    lastOutL = 0; lastOutR = 0;
-                    phaseA = 0; phaseB = 0; phaseC = 0;
+                    if(scriptNode) scriptNode.disconnect(); if(analyser) analyser.disconnect(); scriptNode = null; 
+                    lastOutL = 0; lastOutR = 0; phaseA = 0; phaseB = 0; phaseC = 0;
                 }, 1000);
             } else {
-                // 開始時に数値をリセット（バグ対策の核心）
-                lastOutL = 0; lastOutR = 0;
-                phaseA = 0; phaseB = 0; phaseC = 0;
-
+                lastOutL = 0; lastOutR = 0; phaseA = 0; phaseB = 0; phaseC = 0;
                 isPlaying = true; btn.classList.add('active');
                 scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
                 mistGain = audioCtx.createGain(); dropGain = audioCtx.createGain(); birdGain = audioCtx.createGain();
                 reverbNode = createReverb(); reverbGain = audioCtx.createGain();
                 analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
-                
-                const now = audioCtx.currentTime; 
-                [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
+                const now = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
                 mistGain.gain.linearRampToValueAtTime(getMistGainValue(s.mistVol.value), now + 1.5);
                 dropGain.gain.linearRampToValueAtTime(getDropGainValue(s.dropVol.value), now + 1.5);
                 birdGain.gain.linearRampToValueAtTime(getBirdGainValue(s.birdVol.value), now + 1.5);
                 reverbGain.gain.value = parseFloat(s.reverb.value);
-                
                 scriptNode.onaudioprocess = (e) => {
                     const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1), sampleRate = audioCtx.sampleRate;
                     const bFreq = 0.85 - (waveWidth * 0.82), incA = (2 * Math.PI * bFreq) / sampleRate, incB = (2 * Math.PI * bFreq * 0.73) / sampleRate, incC = (2 * Math.PI * bFreq * 1.41) / sampleRate;
-                    
                     for (let i = 0; i < outL.length; i++) {
                         phaseA += incA; phaseB += incB; phaseC += incC;
                         const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
                         const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + mod));
-                        
                         const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1;
                         const cL = wL, cR = (wR * stereoWidth) + (wL * (1 - stereoWidth));
-                        
-                        // 計算式を分離してNaNチェック（極めて安全な処理）
-                        let nextL = (lastOutL * curF) + (cL * (1 - curF));
-                        let nextR = (lastOutR * curF) + (cR * (1 - curF));
-                        
-                        // 数値が壊れていたら（NaN）0に強制修正
-                        if (isNaN(nextL)) nextL = 0;
-                        if (isNaN(nextR)) nextR = 0;
-
-                        outL[i] = nextL; outR[i] = nextR; 
-                        lastOutL = nextL; lastOutR = nextR;
+                        let nextL = (lastOutL * curF) + (cL * (1 - curF)), nextR = (lastOutR * curF) + (cR * (1 - curF));
+                        if (isNaN(nextL)) nextL = 0; if (isNaN(nextR)) nextR = 0;
+                        outL[i] = nextL; outR[i] = nextR; lastOutL = nextL; lastOutR = nextR;
                     }
                 };
                 scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode);
                 birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser);
                 analyser.connect(audioCtx.destination);
-                
                 const dArray = new Uint8Array(analyser.frequencyBinCount), maxIdx = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dArray.length);
                 const draw = () => {
                     if (!isPlaying) return;
