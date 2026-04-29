@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pure Flow - Full Ambient Mixer</title>
+    <title>Pure Flow - Spatial Ambient Mixer</title>
     <style>
         body { margin: 0; overflow: hidden; background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
         canvas#visualizer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; cursor: pointer; }
@@ -20,7 +20,6 @@
         .play-wrapper { position: relative; width: 135px; height: 135px; margin-bottom: 10px; cursor: pointer; }
         button#btn { position: absolute; top: 0; left: 0; width: 135px; height: 135px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
         canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 135px; height: 135px; z-index: 11; pointer-events: none; }
-        
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
         summary { color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; cursor: pointer; outline: none; list-style: none; padding: 5px; display: flex; align-items: center; justify-content: flex-start; opacity: 0.7; }
         .part-switch { margin-right: 12px; width: 14px; height: 14px; cursor: pointer; accent-color: #000; }
@@ -88,17 +87,10 @@
         const mistEnable = document.getElementById('mistEnable'), dropEnable = document.getElementById('dropEnable'), birdEnable = document.getElementById('birdEnable');
         
         const s = {
-            mistVol: document.getElementById('mistVolRange'), 
-            filter: document.getElementById('filterRange'), 
-            stereo: document.getElementById('stereoRange'),
-            waveHeight: document.getElementById('waveHeightRange'), 
-            waveWidth: document.getElementById('waveWidthRange'), 
-            dropVol: document.getElementById('dropVolRange'),
-            reverb: document.getElementById('reverbRange'), 
-            dropInterval: document.getElementById('dropIntervalRange'), 
-            birdVol: document.getElementById('birdVolRange'),
-            birdPitchSpeed: document.getElementById('birdPitchSpeedRange'), 
-            birdInterval: document.getElementById('birdIntervalRange')
+            mistVol: document.getElementById('mistVolRange'), filter: document.getElementById('filterRange'), stereo: document.getElementById('stereoRange'),
+            waveHeight: document.getElementById('waveHeightRange'), waveWidth: document.getElementById('waveWidthRange'), 
+            dropVol: document.getElementById('dropVolRange'), reverb: document.getElementById('reverbRange'), dropInterval: document.getElementById('dropIntervalRange'), 
+            birdVol: document.getElementById('birdVolRange'), birdPitchSpeed: document.getElementById('birdPitchSpeedRange'), birdInterval: document.getElementById('birdIntervalRange')
         };
         const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
 
@@ -156,32 +148,73 @@
         function playDrop() {
             if (!isPlaying) return;
             if (!dropEnable.checked) { dropTimer = setTimeout(playDrop, 500); return; }
-            const now = audioCtx.currentTime, freq = scale[Math.floor(Math.random() * scale.length)];
-            const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
-            osc.type = 'sine'; osc.frequency.setValueAtTime(freq * 2, now); osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
-            const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.02, audioCtx.sampleRate), nd = noiseBuf.getChannelData(0);
-            for (let i = 0; i < noiseBuf.length; i++) nd[i] = Math.random() * 0.4;
-            const ns = audioCtx.createBufferSource(); ns.buffer = noiseBuf;
-            const ng = audioCtx.createGain(), interval = 3100 - (parseInt(s.dropInterval.value) || 2000), decay = Math.min(1.2, (interval / 1000) + 0.1);
-            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3, now + 0.005); g.gain.exponentialRampToValueAtTime(0.001, now + decay);
-            ng.gain.setValueAtTime(0.15, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
-            osc.connect(g); g.connect(dropGain); ns.connect(ng); ng.connect(dropGain);
-            osc.start(now); osc.stop(now + decay + 0.1); ns.start(now);
+            
+            const now = audioCtx.currentTime;
+            const freq = scale[Math.floor(Math.random() * scale.length)];
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            const panner = audioCtx.createStereoPanner(); // 【復元】左右の定位
+            
+            panner.pan.setValueAtTime(Math.random() * 2 - 1, now); // ランダムにパンを振る
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq * 2, now);
+            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
+            
+            const interval = 3100 - (parseInt(s.dropInterval.value) || 2000);
+            const decay = Math.min(1.2, (interval / 1000) + 0.1);
+            
+            g.gain.setValueAtTime(0, now);
+            g.gain.linearRampToValueAtTime(0.3, now + 0.005);
+            g.gain.exponentialRampToValueAtTime(0.001, now + decay);
+            
+            osc.connect(g); g.connect(panner); panner.connect(dropGain);
+            osc.start(now); osc.stop(now + decay + 0.1);
+            
             dropTimer = setTimeout(playDrop, interval * (Math.random() * 0.4 + 0.8));
         }
 
         function playBird(burstCount = 0) {
             if (!isPlaying) return;
             if (!birdEnable.checked) { birdTimer = setTimeout(() => playBird(0), 500); return; }
-            const now = audioCtx.currentTime, birdScale = scale.slice(15), baseFreq = birdScale[Math.floor(Math.random() * birdScale.length)];
-            const freq = baseFreq * (0.95 + Math.random() * 0.1), osc = audioCtx.createOscillator(), g = audioCtx.createGain();
-            osc.type = 'sine'; const sweepTime = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
-            const direction = Math.random() > 0.5 ? 1.5 : 0.7; osc.frequency.setValueAtTime(freq * direction, now); osc.frequency.exponentialRampToValueAtTime(freq, now + sweepTime);
-            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.2, now + 0.01); g.gain.exponentialRampToValueAtTime(0.001, now + sweepTime + 0.05);
-            osc.connect(g); g.connect(birdGain); osc.start(now); osc.stop(now + sweepTime + 0.1);
-            let nextBurst = 0, nextInterval = 0;
-            if (burstCount > 0) { nextBurst = burstCount - 1; nextInterval = 50 + Math.random() * 100; }
-            else { if (Math.random() > 0.7) { nextBurst = Math.floor(Math.random() * 4) + 1; nextInterval = 80; } else { nextBurst = 0; nextInterval = (3100 - (parseInt(s.birdInterval.value) || 1500)) * (0.6 + Math.random() * 0.7); } }
+            
+            const now = audioCtx.currentTime;
+            const birdScale = scale.slice(15);
+            const baseFreq = birdScale[Math.floor(Math.random() * birdScale.length)];
+            const freq = baseFreq * (0.98 + Math.random() * 0.04); // 【復元】わずかなデチューン
+            
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            const panner = audioCtx.createStereoPanner(); // 【復元】左右の定位
+            
+            panner.pan.setValueAtTime(Math.random() * 1.6 - 0.8, now); // 鳴くたびに居場所を変える
+            
+            osc.type = 'sine';
+            const speedVal = parseFloat(s.birdPitchSpeed.value) || 0.15;
+            const sweepTime = speedVal * (0.8 + Math.random() * 0.4);
+            const direction = Math.random() > 0.5 ? 1.5 : 0.7;
+            
+            osc.frequency.setValueAtTime(freq * direction, now);
+            osc.frequency.exponentialRampToValueAtTime(freq, now + sweepTime);
+            
+            g.gain.setValueAtTime(0, now);
+            g.gain.linearRampToValueAtTime(0.2, now + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.001, now + sweepTime + 0.05);
+            
+            osc.connect(g); g.connect(panner); panner.connect(birdGain);
+            osc.start(now); osc.stop(now + sweepTime + 0.1);
+            
+            let nextBurst = 0; let nextInterval = 0;
+            if (burstCount > 0) {
+                nextBurst = burstCount - 1; nextInterval = 50 + Math.random() * 100;
+            } else {
+                if (Math.random() > 0.7) {
+                    nextBurst = Math.floor(Math.random() * 4) + 1; nextInterval = 80;
+                } else {
+                    nextBurst = 0;
+                    nextInterval = (3100 - (parseInt(s.birdInterval.value) || 1500)) * (0.6 + Math.random() * 0.7);
+                }
+            }
             birdTimer = setTimeout(() => playBird(nextBurst), nextInterval);
         }
 
@@ -232,11 +265,14 @@
                 mistGain = audioCtx.createGain(); dropGain = audioCtx.createGain(); birdGain = audioCtx.createGain();
                 reverbNode = createReverb(); reverbGain = audioCtx.createGain();
                 analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
-                const now = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
+                
+                const now = audioCtx.currentTime;
+                [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
                 mistGain.gain.linearRampToValueAtTime(getMistGainValue(s.mistVol.value), now + 1.5);
                 dropGain.gain.linearRampToValueAtTime(getDropGainValue(s.dropVol.value), now + 1.5);
                 birdGain.gain.linearRampToValueAtTime(getBirdGainValue(s.birdVol.value), now + 1.5);
                 reverbGain.gain.value = parseFloat(s.reverb.value);
+
                 scriptNode.onaudioprocess = (e) => {
                     const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1), sampleRate = audioCtx.sampleRate;
                     const bFreq = 0.85 - (waveWidth * 0.82), incA = (2 * Math.PI * bFreq) / sampleRate, incB = (2 * Math.PI * bFreq * 0.73) / sampleRate, incC = (2 * Math.PI * bFreq * 1.41) / sampleRate;
@@ -254,6 +290,7 @@
                 scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode);
                 birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser);
                 analyser.connect(audioCtx.destination);
+                
                 const dArray = new Uint8Array(analyser.frequencyBinCount), maxIdx = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dArray.length);
                 const draw = () => {
                     if (!isPlaying) return;
