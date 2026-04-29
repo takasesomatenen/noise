@@ -21,17 +21,20 @@
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
 
         /* 再生ボタンエリアのラップ */
+        /* 【修正】サイズを1.5倍 (60px -> 90px) */
         .play-wrapper {
-            position: relative; width: 60px; height: 60px; margin-bottom: 10px; cursor: pointer;
+            position: relative; width: 90px; height: 90px; margin-bottom: 10px; cursor: pointer;
         }
-        /* 中心のボタン（透明にして、背後のCanvasをクリッカブルに） */
+        /* 中心のボタン（透明） */
+        /* 【修正】サイズを1.5倍 (60px -> 90px) */
         button#btn { 
-            position: absolute; top: 0; left: 0; width: 60px; height: 60px; border-radius: 50%; 
+            position: absolute; top: 0; left: 0; width: 90px; height: 90px; border-radius: 50%; 
             border: none; background: transparent; outline: none; z-index: 12; cursor: pointer;
         }
         /* ボタン内部のインジケーターCanvas */
+        /* 【修正】サイズを1.5倍 (60px -> 90px) */
         canvas#btnVisualizer {
-            position: absolute; top: 0; left: 0; width: 60px; height: 60px; z-index: 11; pointer-events: none;
+            position: absolute; top: 0; left: 0; width: 90px; height: 90px; z-index: 11; pointer-events: none;
         }
 
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
@@ -138,7 +141,8 @@
         function resize() {
             canvas.width = window.innerWidth; canvas.height = window.innerHeight;
             if (tempCanvas) { tempCanvas.width = canvas.width; tempCanvas.height = canvas.height; }
-            btnCanvas.width = 120; btnCanvas.height = 120; // 内部解像度を高めに
+            // 【修正】Canvasの内部解像度も1.5倍 (120 -> 180)
+            btnCanvas.width = 180; btnCanvas.height = 180;
             prepareImageData();
         }
         window.addEventListener('resize', resize);
@@ -200,7 +204,8 @@
             btnCtx.clearRect(0, 0, btnCanvas.width, btnCanvas.height);
             const cx = btnCanvas.width / 2;
             const cy = btnCanvas.height / 2;
-            const baseRadius = 25;
+            // 【修正】基本半径を1.5倍 (25 -> 37.5)
+            const baseRadius = 37.5;
 
             btnCtx.beginPath();
             btnCtx.fillStyle = '#000';
@@ -223,7 +228,8 @@
                 for (let i = 0; i <= points; i++) {
                     const angle = (i / points) * Math.PI; // 0 to 180 degrees (右半分)
                     const v = data[i * slice] / 255;
-                    const r = baseRadius + (v * 15); // 音圧で半径を最大15px膨らませる
+                    // 【修正】音圧による膨らみ幅も少し大きく (15 -> 22)
+                    const r = baseRadius + (v * 22); 
                     
                     const x = cx + Math.sin(angle) * r;
                     const y = cy - Math.cos(angle) * r;
@@ -232,7 +238,8 @@
                 for (let i = points; i >= 0; i--) {
                     const angle = (i / points) * Math.PI; // 180 down to 0 (左半分)
                     const v = data[i * slice] / 255;
-                    const r = baseRadius + (v * 15);
+                    // 【修正】音圧による膨らみ幅も少し大きく (15 -> 22)
+                    const r = baseRadius + (v * 22);
                     
                     const x = cx - Math.sin(angle) * r;
                     const y = cy - Math.cos(angle) * r;
