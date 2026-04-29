@@ -212,39 +212,61 @@
                 isPlaying = false; clearTimeout(dropTimer); clearTimeout(birdTimer); btn.classList.remove('active');
                 const now = audioCtx.currentTime;
                 [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, now, 0.2));
-                // MIST再開時のバグ防止: フィルタの状態変数をリセット
-                setTimeout(() => { if(scriptNode) scriptNode.disconnect(); if(analyser) analyser.disconnect(); scriptNode = null; lastOutL = 0; lastOutR = 0; }, 1000);
+                
+                setTimeout(() => { 
+                    if(scriptNode) scriptNode.disconnect(); 
+                    if(analyser) analyser.disconnect(); 
+                    scriptNode = null; 
+                    // 停止時に状態変数を明示的にクリーンアップ
+                    lastOutL = 0; lastOutR = 0;
+                    phaseA = 0; phaseB = 0; phaseC = 0;
+                }, 1000);
             } else {
+                // 開始時に数値をリセット（バグ対策の核心）
+                lastOutL = 0; lastOutR = 0;
+                phaseA = 0; phaseB = 0; phaseC = 0;
+
                 isPlaying = true; btn.classList.add('active');
                 scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
                 mistGain = audioCtx.createGain(); dropGain = audioCtx.createGain(); birdGain = audioCtx.createGain();
                 reverbNode = createReverb(); reverbGain = audioCtx.createGain();
                 analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
-                const now = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
+                
+                const now = audioCtx.currentTime; 
+                [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
                 mistGain.gain.linearRampToValueAtTime(getMistGainValue(s.mistVol.value), now + 1.5);
                 dropGain.gain.linearRampToValueAtTime(getDropGainValue(s.dropVol.value), now + 1.5);
                 birdGain.gain.linearRampToValueAtTime(getBirdGainValue(s.birdVol.value), now + 1.5);
                 reverbGain.gain.value = parseFloat(s.reverb.value);
                 
-                // バグ対策: 開始前に変数を初期化
-                lastOutL = 0; lastOutR = 0;
-
                 scriptNode.onaudioprocess = (e) => {
                     const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1), sampleRate = audioCtx.sampleRate;
-                    const baseFreq = 0.85 - (waveWidth * 0.82), incrA = (2 * Math.PI * baseFreq) / sampleRate, incrB = (2 * Math.PI * baseFreq * 0.73) / sampleRate, incrC = (2 * Math.PI * baseFreq * 1.41) / sampleRate;
+                    const bFreq = 0.85 - (waveWidth * 0.82), incA = (2 * Math.PI * bFreq) / sampleRate, incB = (2 * Math.PI * bFreq * 0.73) / sampleRate, incC = (2 * Math.PI * bFreq * 1.41) / sampleRate;
+                    
                     for (let i = 0; i < outL.length; i++) {
-                        phaseA += incrA; phaseB += incrB; phaseC += incrC;
-                        const modulation = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
-                        const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + modulation));
+                        phaseA += incA; phaseB += incB; phaseC += incC;
+                        const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
+                        const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + mod));
+                        
                         const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1;
                         const cL = wL, cR = (wR * stereoWidth) + (wL * (1 - stereoWidth));
-                        const bL = (lastOutL * curF) + (cL * (1 - curF)), bR = (lastOutR * curF) + (cR * (1 - curF));
-                        outL[i] = bL; outR[i] = bR; lastOutL = bL; lastOutR = bR;
+                        
+                        // 計算式を分離してNaNチェック（極めて安全な処理）
+                        let nextL = (lastOutL * curF) + (cL * (1 - curF));
+                        let nextR = (lastOutR * curF) + (cR * (1 - curF));
+                        
+                        // 数値が壊れていたら（NaN）0に強制修正
+                        if (isNaN(nextL)) nextL = 0;
+                        if (isNaN(nextR)) nextR = 0;
+
+                        outL[i] = nextL; outR[i] = nextR; 
+                        lastOutL = nextL; lastOutR = nextR;
                     }
                 };
                 scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode);
                 birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser);
                 analyser.connect(audioCtx.destination);
+                
                 const dArray = new Uint8Array(analyser.frequencyBinCount), maxIdx = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dArray.length);
                 const draw = () => {
                     if (!isPlaying) return;
