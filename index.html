@@ -29,9 +29,10 @@
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
         
-        .play-wrapper { position: relative; width: 108px; height: 108px; margin-bottom: 10px; cursor: pointer; }
-        button#btn { position: absolute; top: 0; left: 0; width: 108px; height: 108px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
-        canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 108px; height: 108px; z-index: 11; pointer-events: none; }
+        /* 再生ボタンエリア (108pxの7割: 約76px) */
+        .play-wrapper { position: relative; width: 76px; height: 76px; margin-bottom: 10px; cursor: pointer; }
+        button#btn { position: absolute; top: 0; left: 0; width: 76px; height: 76px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
+        canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 76px; height: 76px; z-index: 11; pointer-events: none; }
         
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
         summary { color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; cursor: pointer; outline: none; list-style: none; padding: 5px; display: flex; align-items: center; justify-content: flex-start; opacity: 0.7; }
@@ -150,31 +151,22 @@
 
         function resize() {
             const dpr = window.devicePixelRatio || 1;
-            // 物理的な表示幅を厳密に取得
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            
-            // キャンバス解像度をピクセル密度に合わせて設定（端数を切り上げ）
+            const w = window.innerWidth, h = window.innerHeight;
             canvas.width = Math.ceil(w * dpr);
             canvas.height = Math.ceil(h * dpr);
-            
-            // 描画コンテキストのスケール設定
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-            // 一時保存用キャンバスも同期
             if (!tempCanvas) tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
             tempCtx = tempCanvas.getContext('2d');
             tempCtx.fillStyle = '#fff';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-            
-            // imageDataを再生成（物理ピクセル幅分）
             imgData = ctx.createImageData(canvas.width, 1);
             
-            // 再生ボタンCanvasの調整
-            btnCanvas.width = Math.ceil(108 * dpr);
-            btnCanvas.height = Math.ceil(108 * dpr);
+            // 再生ボタンCanvasの調整 (76pxに合わせる)
+            btnCanvas.width = Math.ceil(76 * dpr);
+            btnCanvas.height = Math.ceil(76 * dpr);
             btnCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
         window.addEventListener('resize', resize);
@@ -229,8 +221,8 @@
         }
 
         function drawButtonVisual() {
-            btnCtx.clearRect(0, 0, 108, 108);
-            const cx = 108 / 2, cy = 108 / 2, baseRadius = 40; 
+            btnCtx.clearRect(0, 0, 76, 76);
+            const cx = 76 / 2, cy = 76 / 2, baseRadius = 28; // サイズに合わせた半径
             btnCtx.beginPath(); btnCtx.fillStyle = '#000';
             if (!isPlaying || !analyser) { btnCtx.arc(cx, cy, baseRadius, 0, Math.PI * 2); btnCtx.fill(); } 
             else {
@@ -238,11 +230,11 @@
                 const points = 64, slice = Math.floor(data.length / 4 / points); 
                 btnCtx.moveTo(cx, cy - baseRadius);
                 for (let i = 0; i <= points; i++) {
-                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 12); 
+                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 10); 
                     btnCtx.lineTo(cx + Math.sin(angle) * r, cy - Math.cos(angle) * r);
                 }
                 for (let i = points; i >= 0; i--) {
-                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 12);
+                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 10);
                     btnCtx.lineTo(cx - Math.sin(angle) * r, cy - Math.cos(angle) * r);
                 }
                 btnCtx.closePath(); btnCtx.fill();
@@ -305,13 +297,12 @@
                     analyser.getByteFrequencyData(dArray); 
                     const maxIdx = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dArray.length);
                     tempCtx.drawImage(canvas, 0, 1);
-                    // 物理ピクセル幅(canvas.width)分ループして描画
                     for (let i = 0; i < canvas.width; i++) {
                         const val = dArray[Math.floor((i / canvas.width) * maxIdx)], gray = 255 - val, p = i * 4;
                         imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255;
                     }
                     ctx.save();
-                    ctx.setTransform(1, 0, 0, 1, 0, 0); // 描画時は一時的にdprリセット
+                    ctx.setTransform(1, 0, 0, 1, 0, 0); 
                     ctx.drawImage(tempCanvas, 0, 0);
                     ctx.putImageData(imgData, 0, 0);
                     ctx.restore();
