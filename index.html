@@ -5,13 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pure Flow - Edge to Edge Ambient</title>
     <style>
-        /* 画面全体の余白をゼロにし、スクロールを完全に禁止 */
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; 
             background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; 
         }
         
-        /* Canvasを画面の最背面に、隙間なく配置 */
         canvas#visualizer { 
             position: fixed; top: 0; left: 0; 
             width: 100vw !important; height: 100vh !important; 
@@ -29,7 +27,6 @@
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
         
-        /* 再生ボタンエリア (108pxの7割: 約76px) */
         .play-wrapper { position: relative; width: 76px; height: 76px; margin-bottom: 10px; cursor: pointer; }
         button#btn { position: absolute; top: 0; left: 0; width: 76px; height: 76px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
         canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 76px; height: 76px; z-index: 11; pointer-events: none; }
@@ -44,9 +41,17 @@
         .slider-group { padding: 10px 5px; display: flex; flex-direction: column; gap: 8px; }
         .slider-item { display: flex; flex-direction: column; gap: 2px; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #000; }
-        .label { color: #000; font-size: 7px; letter-spacing: 1.5px; opacity: 0.5; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .label { color: #000; font-size: 7px; letter-spacing: 1.5px; opacity: 0.5; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
         .count-val { opacity: 0.8; font-family: monospace; }
         
+        /* タイマー用スタイル */
+        .timer-input-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+        .timer-input-row input { background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; width: 35px; font-size: 11px; text-align: center; padding: 2px; outline: none; }
+        .timer-unit { font-size: 9px; opacity: 0.5; margin-right: 4px; }
+        .clear-btn { margin-left: auto; font-size: 8px; font-weight: bold; letter-spacing: 1px; color: #fff; background: #000; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; opacity: 0.8; }
+        .clear-btn:active { opacity: 1; transform: scale(0.95); }
+        .timer-display { font-family: monospace; font-size: 10px; opacity: 0.8; letter-spacing: 0; }
+
         .logo-container { position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); z-index: 5; color: #000; text-align: center; white-space: nowrap; pointer-events: none; }
         .logo-text { font-size: 11px; font-weight: 300; letter-spacing: 0.3em; opacity: 0.4; text-transform: uppercase; display: flex; align-items: center; justify-content: center; }
         .logo-symbol { display: inline-block; width: 8px; height: 8px; background-color: #000; border-radius: 50%; margin-left: 8px; margin-right: 4px; margin-top: -1px;}
@@ -61,6 +66,17 @@
             <button id="btn"></button>
         </div>
         
+        <details id="timerSection">
+            <summary><div style="width:26px"></div><div class="summary-text">TIMER <span id="remainingTime" class="timer-display"></span></div></summary>
+            <div class="slider-group">
+                <div class="timer-input-row">
+                    <input type="number" id="timerH" min="0" placeholder="0"><span class="timer-unit">h</span>
+                    <input type="number" id="timerM" min="0" max="59" placeholder="0"><span class="timer-unit">m</span>
+                    <button class="clear-btn" id="timerClear">CLEAR</button>
+                </div>
+            </div>
+        </details>
+
         <details>
             <summary><input type="checkbox" id="mistEnable" class="part-switch" checked><div class="summary-text">MIST</div></summary>
             <div class="slider-group">
@@ -100,15 +116,20 @@
     </div>
 
     <script>
-        let audioCtx, scriptNode, mistGain, dropGain, birdGain, reverbNode, reverbGain, analyser;
+        let audioCtx, scriptNode, mistGain, dropGain, birdGain, reverbNode, reverbGain, masterGain, analyser;
         let lastOutL = 0, lastOutR = 0, baseFilterWeight = 0.7, stereoWidth = 0.5, waveHeight = 0.5, waveWidth = 0.7;
         let isPlaying = false, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
         let dropTimers = [], birdTimers = [];
+        
+        // Timer variables
+        let timerRemaining = 0;
+        let timerInterval = null;
 
         const btn = document.getElementById('btn'), panel = document.getElementById('panel');
         const btnCanvas = document.getElementById('btnVisualizer'), btnCtx = btnCanvas.getContext('2d');
         const mistEnable = document.getElementById('mistEnable'), dropEnable = document.getElementById('dropEnable'), birdEnable = document.getElementById('birdEnable');
-        
+        const inH = document.getElementById('timerH'), inM = document.getElementById('timerM'), timerClear = document.getElementById('timerClear'), displayTime = document.getElementById('remainingTime');
+
         const s = {
             mistVol: document.getElementById('mistVolRange'), mistCount: document.getElementById('mistCountRange'),
             filter: document.getElementById('filterRange'), stereo: document.getElementById('stereoRange'),
@@ -129,6 +150,51 @@
 
         document.addEventListener('visibilitychange', () => { isVisible = (document.visibilityState === 'visible'); });
         canvas.addEventListener('click', () => { panel.classList.toggle('hidden'); });
+
+        // Timer functions
+        function startTimer() {
+            const h = parseInt(inH.value) || 0;
+            const m = parseInt(inM.value) || 0;
+            timerRemaining = (h * 3600) + (m * 60);
+            
+            if (timerRemaining > 0) {
+                updateTimerDisplay();
+                timerInterval = setInterval(() => {
+                    timerRemaining--;
+                    updateTimerDisplay();
+                    if (timerRemaining <= 0) stopWithFade();
+                }, 1000);
+            }
+        }
+
+        function updateTimerDisplay() {
+            if (timerRemaining <= 0) {
+                displayTime.innerText = "";
+                return;
+            }
+            const h = Math.floor(timerRemaining / 3600);
+            const m = Math.floor((timerRemaining % 3600) / 60);
+            const s = timerRemaining % 60;
+            displayTime.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        }
+
+        function stopWithFade() {
+            clearInterval(timerInterval);
+            const now = audioCtx.currentTime;
+            masterGain.gain.setTargetAtTime(0, now, 1.0); // 約3秒のフェードアウト
+            setTimeout(() => {
+                if (isPlaying) btn.click();
+            }, 3500);
+        }
+
+        timerClear.addEventListener('click', (e) => {
+            e.stopPropagation();
+            inH.value = "";
+            inM.value = "";
+            timerRemaining = 0;
+            displayTime.innerText = "";
+            clearInterval(timerInterval);
+        });
 
         function updateVolumes() {
             if (!isPlaying || !audioCtx) return;
@@ -164,7 +230,6 @@
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             imgData = ctx.createImageData(canvas.width, 1);
             
-            // 再生ボタンCanvasの調整 (76pxに合わせる)
             btnCanvas.width = Math.ceil(76 * dpr);
             btnCanvas.height = Math.ceil(76 * dpr);
             btnCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -222,7 +287,7 @@
 
         function drawButtonVisual() {
             btnCtx.clearRect(0, 0, 76, 76);
-            const cx = 76 / 2, cy = 76 / 2, baseRadius = 28; // サイズに合わせた半径
+            const cx = 76 / 2, cy = 76 / 2, baseRadius = 28;
             btnCtx.beginPath(); btnCtx.fillStyle = '#000';
             if (!isPlaying || !analyser) { btnCtx.arc(cx, cy, baseRadius, 0, Math.PI * 2); btnCtx.fill(); } 
             else {
@@ -252,22 +317,42 @@
                 dG.gain.setValueAtTime(0, audioCtx.currentTime); dummy.connect(dG); dG.connect(audioCtx.destination); dummy.start(0); dummy.stop(0.001);
             }
             if (isPlaying) {
-                isPlaying = false; dropTimers.forEach(clearTimeout); birdTimers.forEach(clearTimeout); btn.classList.remove('active');
+                isPlaying = false; 
+                dropTimers.forEach(clearTimeout); 
+                birdTimers.forEach(clearTimeout); 
+                clearInterval(timerInterval);
+                displayTime.innerText = "";
+                btn.classList.remove('active');
                 const now = audioCtx.currentTime;
                 [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, now, 0.2));
-                setTimeout(() => { if(scriptNode) scriptNode.disconnect(); if(analyser) analyser.disconnect(); scriptNode = null; lastOutL = 0; lastOutR = 0; }, 1000);
+                setTimeout(() => { 
+                    if(scriptNode) scriptNode.disconnect(); 
+                    if(analyser) analyser.disconnect(); 
+                    if(masterGain) masterGain.disconnect();
+                    scriptNode = null; lastOutL = 0; lastOutR = 0; 
+                }, 1000);
             } else {
                 lastOutL = 0; lastOutR = 0; phaseA = 0; phaseB = 0; phaseC = 0;
                 isPlaying = true; btn.classList.add('active');
+                
                 scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
-                mistGain = audioCtx.createGain(); dropGain = audioCtx.createGain(); birdGain = audioCtx.createGain();
-                reverbNode = createReverb(); reverbGain = audioCtx.createGain();
-                analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
-                const now = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
+                mistGain = audioCtx.createGain(); 
+                dropGain = audioCtx.createGain(); 
+                birdGain = audioCtx.createGain();
+                masterGain = audioCtx.createGain();
+                reverbNode = createReverb(); 
+                reverbGain = audioCtx.createGain();
+                analyser = audioCtx.createAnalyser(); 
+                analyser.fftSize = 2048;
+
+                const now = audioCtx.currentTime; 
+                masterGain.gain.setValueAtTime(1, now);
+                [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
                 mistGain.gain.linearRampToValueAtTime(getMistGainValue(s.mistVol.value), now + 1.5);
                 dropGain.gain.linearRampToValueAtTime(getDropGainValue(s.dropVol.value), now + 1.5);
                 birdGain.gain.linearRampToValueAtTime(getBirdGainValue(s.birdVol.value), now + 1.5);
                 reverbGain.gain.value = parseFloat(s.reverb.value);
+
                 scriptNode.onaudioprocess = (e) => {
                     const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1), sampleRate = audioCtx.sampleRate;
                     const bFreq = 0.85 - (waveWidth * 0.82), incA = (2 * Math.PI * bFreq) / sampleRate, incB = (2 * Math.PI * bFreq * 0.73) / sampleRate, incC = (2 * Math.PI * bFreq * 1.41) / sampleRate;
@@ -287,9 +372,18 @@
                         outL[i] = nextL; outR[i] = nextR; lastOutL = nextL; lastOutR = nextR;
                     }
                 };
-                scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode);
-                birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser);
-                analyser.connect(audioCtx.destination);
+
+                scriptNode.connect(mistGain); 
+                mistGain.connect(analyser); 
+                dropGain.connect(analyser); 
+                dropGain.connect(reverbNode);
+                birdGain.connect(analyser); 
+                birdGain.connect(reverbNode); 
+                reverbNode.connect(reverbGain); 
+                reverbGain.connect(analyser); 
+                analyser.connect(masterGain);
+                masterGain.connect(audioCtx.destination);
+
                 const draw = () => {
                     if (!isPlaying) return;
                     requestAnimationFrame(draw); if (!isVisible) return;
@@ -307,8 +401,14 @@
                     ctx.putImageData(imgData, 0, 0);
                     ctx.restore();
                 }
-                draw(); updateVolumes(); 
-                for(let i=0; i<10; i++) { setTimeout(() => playSingleDrop(i), Math.random() * 2000); setTimeout(() => playSingleBird(i), Math.random() * 2000); }
+                draw(); 
+                updateVolumes(); 
+                startTimer(); // 再生開始時にタイマーをスタート
+                
+                for(let i=0; i<10; i++) { 
+                    setTimeout(() => playSingleDrop(i), Math.random() * 2000); 
+                    setTimeout(() => playSingleBird(i), Math.random() * 2000); 
+                }
             }
         });
     </script>
