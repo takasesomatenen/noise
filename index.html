@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Pure Flow - Edge to Edge Ambient</title>
+    <!-- タブの名前をNOISEに変更 -->
+    <title>NOISE</title>
     <style>
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; 
@@ -27,6 +28,7 @@
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
         
+        /* 再生ボタンエリア (76px) */
         .play-wrapper { position: relative; width: 76px; height: 76px; margin-bottom: 10px; cursor: pointer; }
         button#btn { position: absolute; top: 0; left: 0; width: 76px; height: 76px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
         canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 76px; height: 76px; z-index: 11; pointer-events: none; }
@@ -44,7 +46,6 @@
         .label { color: #000; font-size: 7px; letter-spacing: 1.5px; opacity: 0.5; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
         .count-val { opacity: 0.8; font-family: monospace; }
         
-        /* タイマー用スタイル */
         .timer-input-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
         .timer-input-row input { background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; width: 35px; font-size: 11px; text-align: center; padding: 2px; outline: none; }
         .timer-unit { font-size: 9px; opacity: 0.5; margin-right: 4px; }
@@ -66,6 +67,7 @@
             <button id="btn"></button>
         </div>
         
+        <!-- TIMER -->
         <details id="timerSection">
             <summary><div style="width:26px"></div><div class="summary-text">TIMER <span id="remainingTime" class="timer-display"></span></div></summary>
             <div class="slider-group">
@@ -121,7 +123,6 @@
         let isPlaying = false, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
         let dropTimers = [], birdTimers = [];
         
-        // Timer variables
         let timerRemaining = 0;
         let timerInterval = null;
 
@@ -151,7 +152,6 @@
         document.addEventListener('visibilitychange', () => { isVisible = (document.visibilityState === 'visible'); });
         canvas.addEventListener('click', () => { panel.classList.toggle('hidden'); });
 
-        // Timer functions
         function startTimer() {
             const h = parseInt(inH.value) || 0;
             const m = parseInt(inM.value) || 0;
@@ -181,7 +181,7 @@
         function stopWithFade() {
             clearInterval(timerInterval);
             const now = audioCtx.currentTime;
-            masterGain.gain.setTargetAtTime(0, now, 1.0); // 約3秒のフェードアウト
+            masterGain.gain.setTargetAtTime(0, now, 1.0);
             setTimeout(() => {
                 if (isPlaying) btn.click();
             }, 3500);
@@ -403,7 +403,7 @@
                 }
                 draw(); 
                 updateVolumes(); 
-                startTimer(); // 再生開始時にタイマーをスタート
+                startTimer(); 
                 
                 for(let i=0; i<10; i++) { 
                     setTimeout(() => playSingleDrop(i), Math.random() * 2000); 
