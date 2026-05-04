@@ -27,10 +27,9 @@
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
         
-        /* 再生ボタンエリア (76px) */
         .play-wrapper { position: relative; width: 76px; height: 76px; margin-bottom: 10px; cursor: pointer; }
         button#btn { position: absolute; top: 0; left: 0; width: 76px; height: 76px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
-        canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 76px; height: 76px; z-index: 11; pointer-events: none; }
+        canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 76px; height: 76px; z-index: 11; pointer-events: none; display: block; }
         
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
         summary { color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; cursor: pointer; outline: none; list-style: none; padding: 5px; display: flex; align-items: center; justify-content: flex-start; opacity: 0.7; }
@@ -144,11 +143,7 @@
         function saveSettings() {
             const data = {
                 inputs: {},
-                checks: {
-                    mist: mistEnable.checked,
-                    drop: dropEnable.checked,
-                    bird: birdEnable.checked
-                }
+                checks: { mist: mistEnable.checked, drop: dropEnable.checked, bird: birdEnable.checked }
             };
             Object.keys(s).forEach(key => data.inputs[key] = s[key].value);
             data.inputs.timerH = inH.value;
@@ -160,9 +155,7 @@
             const saved = localStorage.getItem('noise_settings');
             if (!saved) { updateLabels(); return; }
             const data = JSON.parse(saved);
-            Object.keys(data.inputs).forEach(key => {
-                if (s[key]) s[key].value = data.inputs[key];
-            });
+            Object.keys(data.inputs).forEach(key => { if (s[key]) s[key].value = data.inputs[key]; });
             inH.value = data.inputs.timerH || "";
             inM.value = data.inputs.timerM || "";
             if(data.checks) {
@@ -244,20 +237,13 @@
         function resize() {
             const dpr = window.devicePixelRatio || 1;
             const w = window.innerWidth, h = window.innerHeight;
-            
             canvas.width = Math.ceil(w * dpr);
             canvas.height = Math.ceil(h * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
             if (!tempCanvas) tempCanvas = document.createElement('canvas');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            tempCtx = tempCanvas.getContext('2d');
-            tempCtx.fillStyle = '#fff';
-            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-            
+            tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
+            tempCtx = tempCanvas.getContext('2d'); tempCtx.fillStyle = '#fff'; tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             imgData = ctx.createImageData(canvas.width, 1);
-            
             btnCanvas.width = Math.ceil(76 * dpr);
             btnCanvas.height = Math.ceil(76 * dpr);
             btnCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -298,4 +284,5 @@
             const now = audioCtx.currentTime, birdScale = scale.slice(15), freq = birdScale[Math.floor(Math.random() * birdScale.length)] * (0.98 + Math.random() * 0.04);
             const osc = audioCtx.createOscillator(), g = audioCtx.createGain(), panner = audioCtx.createStereoPanner();
             panner.pan.setValueAtTime((Math.random() * 2 - 1) * parseFloat(s.birdStereo.value), now);
-            osc.type = 'sine';
+            osc.type = 'sine'; const sweepTime = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
+            osc.frequency.setValueAtTime(freq * (Math.random() > 0.5 ? 1.5 : 0.7), now); osc.freque
