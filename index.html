@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <!-- タブの名前をNOISEに変更 -->
     <title>NOISE</title>
     <style>
         html, body { 
@@ -28,7 +27,6 @@
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
         
-        /* 再生ボタンエリア (76px) */
         .play-wrapper { position: relative; width: 76px; height: 76px; margin-bottom: 10px; cursor: pointer; }
         button#btn { position: absolute; top: 0; left: 0; width: 76px; height: 76px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
         canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 76px; height: 76px; z-index: 11; pointer-events: none; }
@@ -50,7 +48,6 @@
         .timer-input-row input { background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; width: 35px; font-size: 11px; text-align: center; padding: 2px; outline: none; }
         .timer-unit { font-size: 9px; opacity: 0.5; margin-right: 4px; }
         .clear-btn { margin-left: auto; font-size: 8px; font-weight: bold; letter-spacing: 1px; color: #fff; background: #000; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; opacity: 0.8; }
-        .clear-btn:active { opacity: 1; transform: scale(0.95); }
         .timer-display { font-family: monospace; font-size: 10px; opacity: 0.8; letter-spacing: 0; }
 
         .logo-container { position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); z-index: 5; color: #000; text-align: center; white-space: nowrap; pointer-events: none; }
@@ -67,7 +64,6 @@
             <button id="btn"></button>
         </div>
         
-        <!-- TIMER -->
         <details id="timerSection">
             <summary><div style="width:26px"></div><div class="summary-text">TIMER <span id="remainingTime" class="timer-display"></span></div></summary>
             <div class="slider-group">
@@ -123,8 +119,7 @@
         let isPlaying = false, isVisible = true, phaseA = 0, phaseB = 0, phaseC = 0;
         let dropTimers = [], birdTimers = [];
         
-        let timerRemaining = 0;
-        let timerInterval = null;
+        let timerRemaining = 0, timerInterval = null;
 
         const btn = document.getElementById('btn'), panel = document.getElementById('panel');
         const btnCanvas = document.getElementById('btnVisualizer'), btnCtx = btnCanvas.getContext('2d');
@@ -145,6 +140,49 @@
         const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
         let tempCanvas, tempCtx, imgData;
 
+        // --- SAVE/LOAD LOGIC ---
+        function saveSettings() {
+            const data = {
+                inputs: {},
+                checks: {
+                    mist: mistEnable.checked,
+                    drop: dropEnable.checked,
+                    bird: birdEnable.checked
+                }
+            };
+            Object.keys(s).forEach(key => data.inputs[key] = s[key].value);
+            data.inputs.timerH = inH.value;
+            data.inputs.timerM = inM.value;
+            localStorage.setItem('noise_settings', JSON.stringify(data));
+        }
+
+        function loadSettings() {
+            const saved = localStorage.getItem('noise_settings');
+            if (!saved) return;
+            const data = JSON.parse(saved);
+            Object.keys(data.inputs).forEach(key => {
+                if (s[key]) s[key].value = data.inputs[key];
+            });
+            inH.value = data.inputs.timerH || "";
+            inM.value = data.inputs.timerM || "";
+            mistEnable.checked = data.checks.mist;
+            dropEnable.checked = data.checks.drop;
+            birdEnable.checked = data.checks.bird;
+            
+            // 変数同期
+            baseFilterWeight = parseFloat(s.filter.value);
+            stereoWidth = parseFloat(s.stereo.value);
+            waveHeight = parseFloat(s.waveHeight.value);
+            waveWidth = parseFloat(s.waveWidth.value);
+            updateLabels();
+        }
+
+        function updateLabels() {
+            displays.mist.innerText = `[${s.mistCount.value}]`;
+            displays.drop.innerText = `[${s.dropCount.value}]`;
+            displays.bird.innerText = `[${s.birdCount.value}]`;
+        }
+
         const getMistGainValue = (val) => mistEnable.checked ? parseFloat(val) * 0.36 : 0;
         const getDropGainValue = (val) => dropEnable.checked ? parseFloat(val) : 0;
         const getBirdGainValue = (val) => birdEnable.checked ? parseFloat(val) * 0.6 : 0;
@@ -156,7 +194,6 @@
             const h = parseInt(inH.value) || 0;
             const m = parseInt(inM.value) || 0;
             timerRemaining = (h * 3600) + (m * 60);
-            
             if (timerRemaining > 0) {
                 updateTimerDisplay();
                 timerInterval = setInterval(() => {
@@ -168,76 +205,55 @@
         }
 
         function updateTimerDisplay() {
-            if (timerRemaining <= 0) {
-                displayTime.innerText = "";
-                return;
-            }
-            const h = Math.floor(timerRemaining / 3600);
-            const m = Math.floor((timerRemaining % 3600) / 60);
-            const s = timerRemaining % 60;
-            displayTime.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            if (timerRemaining <= 0) { displayTime.innerText = ""; return; }
+            const h = Math.floor(timerRemaining / 3600), m = Math.floor((timerRemaining % 3600) / 60), sec = timerRemaining % 60;
+            displayTime.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
         }
 
         function stopWithFade() {
             clearInterval(timerInterval);
             const now = audioCtx.currentTime;
             masterGain.gain.setTargetAtTime(0, now, 1.0);
-            setTimeout(() => {
-                if (isPlaying) btn.click();
-            }, 3500);
+            setTimeout(() => { if (isPlaying) btn.click(); }, 3500);
         }
 
         timerClear.addEventListener('click', (e) => {
-            e.stopPropagation();
-            inH.value = "";
-            inM.value = "";
-            timerRemaining = 0;
-            displayTime.innerText = "";
-            clearInterval(timerInterval);
+            e.stopPropagation(); inH.value = ""; inM.value = ""; timerRemaining = 0; displayTime.innerText = ""; 
+            clearInterval(timerInterval); saveSettings();
         });
 
         function updateVolumes() {
-            if (!isPlaying || !audioCtx) return;
+            if (!isPlaying || !audioCtx) { updateLabels(); return; }
             const now = audioCtx.currentTime;
             mistGain.gain.setTargetAtTime(getMistGainValue(s.mistVol.value), now, 0.1);
             dropGain.gain.setTargetAtTime(getDropGainValue(s.dropVol.value), now, 0.1);
             birdGain.gain.setTargetAtTime(getBirdGainValue(s.birdVol.value), now, 0.1);
-            displays.mist.innerText = `[${s.mistCount.value}]`;
-            displays.drop.innerText = `[${s.dropCount.value}]`;
-            displays.bird.innerText = `[${s.birdCount.value}]`;
+            updateLabels();
         }
 
-        s.filter.addEventListener('input', (e) => baseFilterWeight = parseFloat(e.target.value));
-        s.stereo.addEventListener('input', (e) => stereoWidth = parseFloat(e.target.value));
-        s.waveHeight.addEventListener('input', (e) => waveHeight = parseFloat(e.target.value));
-        s.waveWidth.addEventListener('input', (e) => waveWidth = parseFloat(e.target.value));
-        [s.mistVol, s.dropVol, s.birdVol, s.mistCount, s.dropCount, s.birdCount].forEach(el => el.addEventListener('input', updateVolumes));
-        [mistEnable, dropEnable, birdEnable].forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); updateVolumes(); }));
-        s.reverb.addEventListener('input', (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); });
+        s.filter.addEventListener('input', (e) => { baseFilterWeight = parseFloat(e.target.value); saveSettings(); });
+        s.stereo.addEventListener('input', (e) => { stereoWidth = parseFloat(e.target.value); saveSettings(); });
+        s.waveHeight.addEventListener('input', (e) => { waveHeight = parseFloat(e.target.value); saveSettings(); });
+        s.waveWidth.addEventListener('input', (e) => { waveWidth = parseFloat(e.target.value); saveSettings(); });
+        
+        [s.mistVol, s.dropVol, s.birdVol, s.mistCount, s.dropCount, s.birdCount, inH, inM].forEach(el => el.addEventListener('input', () => { updateVolumes(); saveSettings(); }));
+        [mistEnable, dropEnable, birdEnable].forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); updateVolumes(); saveSettings(); }));
+        s.reverb.addEventListener('input', (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); saveSettings(); });
 
         function resize() {
-            const dpr = window.devicePixelRatio || 1;
-            const w = window.innerWidth, h = window.innerHeight;
-            canvas.width = Math.ceil(w * dpr);
-            canvas.height = Math.ceil(h * dpr);
+            const dpr = window.devicePixelRatio || 1, w = window.innerWidth, h = window.innerHeight;
+            canvas.width = Math.ceil(w * dpr); canvas.height = Math.ceil(h * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
             if (!tempCanvas) tempCanvas = document.createElement('canvas');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            tempCtx = tempCanvas.getContext('2d');
-            tempCtx.fillStyle = '#fff';
-            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
+            tempCtx = tempCanvas.getContext('2d'); tempCtx.fillStyle = '#fff'; tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             imgData = ctx.createImageData(canvas.width, 1);
-            
-            btnCanvas.width = Math.ceil(76 * dpr);
-            btnCanvas.height = Math.ceil(76 * dpr);
+            btnCanvas.width = Math.ceil(76 * dpr); btnCanvas.height = Math.ceil(76 * dpr);
             btnCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
         window.addEventListener('resize', resize);
         window.addEventListener('orientationchange', () => { setTimeout(resize, 100); });
-        resize();
-
+        
         function createReverb() {
             const len = audioCtx.sampleRate * 4, buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
             for (let c = 0; c < 2; c++) {
@@ -253,13 +269,11 @@
             if (!isPlaying) return;
             const count = parseInt(s.dropCount.value);
             if (index >= count || !dropEnable.checked) { dropTimers[index] = setTimeout(() => playSingleDrop(index), 500); return; }
-            const now = audioCtx.currentTime;
-            const freq = scale[Math.floor(Math.random() * scale.length)];
+            const now = audioCtx.currentTime, freq = scale[Math.floor(Math.random() * scale.length)];
             const osc = audioCtx.createOscillator(), g = audioCtx.createGain(), panner = audioCtx.createStereoPanner();
             panner.pan.setValueAtTime((Math.random() * 2 - 1) * parseFloat(s.dropStereo.value), now);
             osc.type = 'sine'; osc.frequency.setValueAtTime(freq * 2, now); osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
-            const interval = 3100 - (parseInt(s.dropInterval.value) || 2000);
-            const decay = Math.min(1.2, (interval / 1000) + 0.1);
+            const interval = 3100 - (parseInt(s.dropInterval.value) || 2000), decay = Math.min(1.2, (interval / 1000) + 0.1);
             g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3 / Math.sqrt(count), now + 0.005); g.gain.exponentialRampToValueAtTime(0.001, now + decay);
             osc.connect(g); g.connect(panner); panner.connect(dropGain);
             osc.start(now); osc.stop(now + decay + 0.1);
@@ -270,147 +284,8 @@
             if (!isPlaying) return;
             const count = parseInt(s.birdCount.value);
             if (index >= count || !birdEnable.checked) { birdTimers[index] = setTimeout(() => playSingleBird(index, 0), 500); return; }
-            const now = audioCtx.currentTime;
-            const birdScale = scale.slice(15);
-            const freq = birdScale[Math.floor(Math.random() * birdScale.length)] * (0.98 + Math.random() * 0.04);
+            const now = audioCtx.currentTime, birdScale = scale.slice(15), freq = birdScale[Math.floor(Math.random() * birdScale.length)] * (0.98 + Math.random() * 0.04);
             const osc = audioCtx.createOscillator(), g = audioCtx.createGain(), panner = audioCtx.createStereoPanner();
             panner.pan.setValueAtTime((Math.random() * 2 - 1) * parseFloat(s.birdStereo.value), now);
             osc.type = 'sine'; const sweepTime = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
-            osc.frequency.setValueAtTime(freq * (Math.random() > 0.5 ? 1.5 : 0.7), now); osc.frequency.exponentialRampToValueAtTime(freq, now + sweepTime);
-            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.2 / Math.sqrt(count), now + 0.01); g.gain.exponentialRampToValueAtTime(0.001, now + sweepTime + 0.05);
-            osc.connect(g); g.connect(panner); panner.connect(birdGain);
-            osc.start(now); osc.stop(now + sweepTime + 0.1);
-            let nextBurst = (Math.random() > 0.7 && burstCount === 0) ? Math.floor(Math.random() * 3) + 1 : Math.max(0, burstCount - 1);
-            let nextInterval = nextBurst > 0 ? 80 : (3100 - (parseInt(s.birdInterval.value) || 1500)) * (0.5 + Math.random() * 1.0);
-            birdTimers[index] = setTimeout(() => playSingleBird(index, nextBurst), nextInterval);
-        }
-
-        function drawButtonVisual() {
-            btnCtx.clearRect(0, 0, 76, 76);
-            const cx = 76 / 2, cy = 76 / 2, baseRadius = 28;
-            btnCtx.beginPath(); btnCtx.fillStyle = '#000';
-            if (!isPlaying || !analyser) { btnCtx.arc(cx, cy, baseRadius, 0, Math.PI * 2); btnCtx.fill(); } 
-            else {
-                const data = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(data);
-                const points = 64, slice = Math.floor(data.length / 4 / points); 
-                btnCtx.moveTo(cx, cy - baseRadius);
-                for (let i = 0; i <= points; i++) {
-                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 10); 
-                    btnCtx.lineTo(cx + Math.sin(angle) * r, cy - Math.cos(angle) * r);
-                }
-                for (let i = points; i >= 0; i--) {
-                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 10);
-                    btnCtx.lineTo(cx - Math.sin(angle) * r, cy - Math.cos(angle) * r);
-                }
-                btnCtx.closePath(); btnCtx.fill();
-            }
-            requestAnimationFrame(drawButtonVisual);
-        }
-        drawButtonVisual();
-
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') {
-                await audioCtx.resume();
-                const dummy = audioCtx.createOscillator(), dG = audioCtx.createGain();
-                dG.gain.setValueAtTime(0, audioCtx.currentTime); dummy.connect(dG); dG.connect(audioCtx.destination); dummy.start(0); dummy.stop(0.001);
-            }
-            if (isPlaying) {
-                isPlaying = false; 
-                dropTimers.forEach(clearTimeout); 
-                birdTimers.forEach(clearTimeout); 
-                clearInterval(timerInterval);
-                displayTime.innerText = "";
-                btn.classList.remove('active');
-                const now = audioCtx.currentTime;
-                [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, now, 0.2));
-                setTimeout(() => { 
-                    if(scriptNode) scriptNode.disconnect(); 
-                    if(analyser) analyser.disconnect(); 
-                    if(masterGain) masterGain.disconnect();
-                    scriptNode = null; lastOutL = 0; lastOutR = 0; 
-                }, 1000);
-            } else {
-                lastOutL = 0; lastOutR = 0; phaseA = 0; phaseB = 0; phaseC = 0;
-                isPlaying = true; btn.classList.add('active');
-                
-                scriptNode = audioCtx.createScriptProcessor(4096, 0, 2);
-                mistGain = audioCtx.createGain(); 
-                dropGain = audioCtx.createGain(); 
-                birdGain = audioCtx.createGain();
-                masterGain = audioCtx.createGain();
-                reverbNode = createReverb(); 
-                reverbGain = audioCtx.createGain();
-                analyser = audioCtx.createAnalyser(); 
-                analyser.fftSize = 2048;
-
-                const now = audioCtx.currentTime; 
-                masterGain.gain.setValueAtTime(1, now);
-                [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
-                mistGain.gain.linearRampToValueAtTime(getMistGainValue(s.mistVol.value), now + 1.5);
-                dropGain.gain.linearRampToValueAtTime(getDropGainValue(s.dropVol.value), now + 1.5);
-                birdGain.gain.linearRampToValueAtTime(getBirdGainValue(s.birdVol.value), now + 1.5);
-                reverbGain.gain.value = parseFloat(s.reverb.value);
-
-                scriptNode.onaudioprocess = (e) => {
-                    const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1), sampleRate = audioCtx.sampleRate;
-                    const bFreq = 0.85 - (waveWidth * 0.82), incA = (2 * Math.PI * bFreq) / sampleRate, incB = (2 * Math.PI * bFreq * 0.73) / sampleRate, incC = (2 * Math.PI * bFreq * 1.41) / sampleRate;
-                    const numMistSources = parseInt(s.mistCount.value);
-                    for (let i = 0; i < outL.length; i++) {
-                        phaseA += incA; phaseB += incB; phaseC += incC;
-                        const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25); 
-                        const curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + mod));
-                        let combinedL = 0, combinedR = 0;
-                        for(let n=0; n<numMistSources; n++) {
-                            const wL = Math.random() * 2 - 1, wR = Math.random() * 2 - 1;
-                            combinedL += wL; combinedR += (wR * stereoWidth) + (wL * (1 - stereoWidth));
-                        }
-                        combinedL /= Math.sqrt(numMistSources); combinedR /= Math.sqrt(numMistSources);
-                        let nextL = (lastOutL * curF) + (combinedL * (1 - curF)), nextR = (lastOutR * curF) + (combinedR * (1 - curF));
-                        if (isNaN(nextL)) nextL = 0; if (isNaN(nextR)) nextR = 0;
-                        outL[i] = nextL; outR[i] = nextR; lastOutL = nextL; lastOutR = nextR;
-                    }
-                };
-
-                scriptNode.connect(mistGain); 
-                mistGain.connect(analyser); 
-                dropGain.connect(analyser); 
-                dropGain.connect(reverbNode);
-                birdGain.connect(analyser); 
-                birdGain.connect(reverbNode); 
-                reverbNode.connect(reverbGain); 
-                reverbGain.connect(analyser); 
-                analyser.connect(masterGain);
-                masterGain.connect(audioCtx.destination);
-
-                const draw = () => {
-                    if (!isPlaying) return;
-                    requestAnimationFrame(draw); if (!isVisible) return;
-                    const dArray = new Uint8Array(analyser.frequencyBinCount);
-                    analyser.getByteFrequencyData(dArray); 
-                    const maxIdx = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dArray.length);
-                    tempCtx.drawImage(canvas, 0, 1);
-                    for (let i = 0; i < canvas.width; i++) {
-                        const val = dArray[Math.floor((i / canvas.width) * maxIdx)], gray = 255 - val, p = i * 4;
-                        imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255;
-                    }
-                    ctx.save();
-                    ctx.setTransform(1, 0, 0, 1, 0, 0); 
-                    ctx.drawImage(tempCanvas, 0, 0);
-                    ctx.putImageData(imgData, 0, 0);
-                    ctx.restore();
-                }
-                draw(); 
-                updateVolumes(); 
-                startTimer(); 
-                
-                for(let i=0; i<10; i++) { 
-                    setTimeout(() => playSingleDrop(i), Math.random() * 2000); 
-                    setTimeout(() => playSingleBird(i), Math.random() * 2000); 
-                }
-            }
-        });
-    </script>
-</body>
-</html>
+            osc.frequency.setValueAtTime(freq * (Math.random() > 0.5 ? 1.5 : 0.7), now); osc.frequency.exponentialRampToValueAtTi
