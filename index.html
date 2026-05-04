@@ -10,7 +10,6 @@
             background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; 
         }
         
-        /* 背景Canvas */
         canvas#visualizer { 
             position: fixed; top: 0; left: 0; 
             width: 100vw !important; height: 100vh !important; 
@@ -35,9 +34,9 @@
         button#btn { 
             position: absolute; top: 0; left: 0; width: 76px; height: 76px; 
             border-radius: 50%; border: none; background: transparent; outline: none; 
-            z-index: 15; cursor: pointer; 
+            z-index: 20; cursor: pointer; 
         }
-        canvas#btnVisualizer { width: 76px !important; height: 76px !important; z-index: 11; pointer-events: none; }
+        canvas#btnVisualizer { width: 76px !important; height: 76px !important; z-index: 15; pointer-events: none; }
         
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
         summary { color: #000; font-size: 10px; font-weight: bold; letter-spacing: 2px; cursor: pointer; outline: none; list-style: none; padding: 5px; display: flex; align-items: center; justify-content: flex-start; opacity: 0.7; }
@@ -132,6 +131,7 @@
         const btnCanvas = document.getElementById('btnVisualizer'), btnCtx = btnCanvas.getContext('2d');
         const mistEnable = document.getElementById('mistEnable'), dropEnable = document.getElementById('dropEnable'), birdEnable = document.getElementById('birdEnable');
         const inH = document.getElementById('timerH'), inM = document.getElementById('timerM'), timerClear = document.getElementById('timerClear'), displayTime = document.getElementById('remainingTime');
+        const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
 
         const s = {
             mistVol: document.getElementById('mistVolRange'), mistCount: document.getElementById('mistCountRange'),
@@ -142,106 +142,67 @@
             birdVol: document.getElementById('birdVolRange'), birdCount: document.getElementById('birdCountRange'),
             birdStereo: document.getElementById('birdStereoRange'), birdPitchSpeed: document.getElementById('birdPitchSpeedRange'), birdInterval: document.getElementById('birdIntervalRange')
         };
-
         const displays = { mist: document.getElementById('mistCountDisplay'), drop: document.getElementById('dropCountDisplay'), bird: document.getElementById('birdCountDisplay') };
-        const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
         let tempCanvas, tempCtx, imgData;
 
+        // --- 設定保存・読み込み ---
         function saveSettings() {
-            const data = {
-                inputs: {},
-                checks: { mist: mistEnable.checked, drop: dropEnable.checked, bird: birdEnable.checked }
-            };
+            const data = { inputs: {}, checks: { mist: mistEnable.checked, drop: dropEnable.checked, bird: birdEnable.checked } };
             Object.keys(s).forEach(key => data.inputs[key] = s[key].value);
-            data.inputs.timerH = inH.value;
-            data.inputs.timerM = inM.value;
+            data.inputs.timerH = inH.value; data.inputs.timerM = inM.value;
             localStorage.setItem('noise_settings', JSON.stringify(data));
         }
-
         function loadSettings() {
             const saved = localStorage.getItem('noise_settings');
             if (!saved) { updateLabels(); return; }
             const data = JSON.parse(saved);
             Object.keys(data.inputs).forEach(key => { if (s[key]) s[key].value = data.inputs[key]; });
-            inH.value = data.inputs.timerH || "";
-            inM.value = data.inputs.timerM || "";
-            if(data.checks) {
-                mistEnable.checked = data.checks.mist;
-                dropEnable.checked = data.checks.drop;
-                birdEnable.checked = data.checks.bird;
-            }
-            baseFilterWeight = parseFloat(s.filter.value);
-            stereoWidth = parseFloat(s.stereo.value);
-            waveHeight = parseFloat(s.waveHeight.value);
-            waveWidth = parseFloat(s.waveWidth.value);
+            inH.value = data.inputs.timerH || ""; inM.value = data.inputs.timerM || "";
+            if(data.checks) { mistEnable.checked = data.checks.mist; dropEnable.checked = data.checks.drop; birdEnable.checked = data.checks.bird; }
+            baseFilterWeight = parseFloat(s.filter.value); stereoWidth = parseFloat(s.stereo.value); waveHeight = parseFloat(s.waveHeight.value); waveWidth = parseFloat(s.waveWidth.value);
             updateLabels();
         }
-
         function updateLabels() {
             displays.mist.innerText = `[${s.mistCount.value}]`;
             displays.drop.innerText = `[${s.dropCount.value}]`;
             displays.bird.innerText = `[${s.birdCount.value}]`;
         }
 
+        // --- タイマー・音響制御 ---
         function startTimer() {
-            const h = parseInt(inH.value) || 0;
-            const m = parseInt(inM.value) || 0;
+            const h = parseInt(inH.value) || 0, m = parseInt(inM.value) || 0;
             timerRemaining = (h * 3600) + (m * 60);
             if (timerRemaining > 0) {
                 updateTimerDisplay();
-                timerInterval = setInterval(() => {
-                    timerRemaining--;
-                    updateTimerDisplay();
-                    if (timerRemaining <= 0) stopWithFade();
-                }, 1000);
+                timerInterval = setInterval(() => { timerRemaining--; updateTimerDisplay(); if (timerRemaining <= 0) stopWithFade(); }, 1000);
             }
         }
-
         function updateTimerDisplay() {
             if (timerRemaining <= 0) { displayTime.innerText = ""; return; }
             const h = Math.floor(timerRemaining / 3600), m = Math.floor((timerRemaining % 3600) / 60), sec = timerRemaining % 60;
             displayTime.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
         }
-
         function stopWithFade() {
             clearInterval(timerInterval);
             if(!masterGain) { if (isPlaying) btn.click(); return; }
-            const now = audioCtx.currentTime;
-            masterGain.gain.setTargetAtTime(0, now, 1.0);
+            masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 1.0);
             setTimeout(() => { if (isPlaying) btn.click(); }, 3500);
         }
-
-        timerClear.addEventListener('click', (e) => {
-            e.stopPropagation(); inH.value = ""; inM.value = ""; timerRemaining = 0; displayTime.innerText = ""; 
-            clearInterval(timerInterval); saveSettings();
-        });
-
-        const getMistGainValue = (val) => mistEnable.checked ? parseFloat(val) * 0.36 : 0;
-        const getDropGainValue = (val) => dropEnable.checked ? parseFloat(val) : 0;
-        const getBirdGainValue = (val) => birdEnable.checked ? parseFloat(val) * 0.6 : 0;
+        timerClear.onclick = (e) => { e.stopPropagation(); inH.value = ""; inM.value = ""; timerRemaining = 0; displayTime.innerText = ""; clearInterval(timerInterval); saveSettings(); };
 
         function updateVolumes() {
             if (!isPlaying || !audioCtx) { updateLabels(); return; }
             const now = audioCtx.currentTime;
-            mistGain.gain.setTargetAtTime(getMistGainValue(s.mistVol.value), now, 0.1);
-            dropGain.gain.setTargetAtTime(getDropGainValue(s.dropVol.value), now, 0.1);
-            birdGain.gain.setTargetAtTime(getBirdGainValue(s.birdVol.value), now, 0.1);
+            mistGain.gain.setTargetAtTime(mistEnable.checked ? parseFloat(s.mistVol.value) * 0.36 : 0, now, 0.1);
+            dropGain.gain.setTargetAtTime(dropEnable.checked ? parseFloat(s.dropVol.value) : 0, now, 0.1);
+            birdGain.gain.setTargetAtTime(birdEnable.checked ? parseFloat(s.birdVol.value) * 0.6 : 0, now, 0.1);
             updateLabels();
         }
 
-        s.filter.addEventListener('input', (e) => { baseFilterWeight = parseFloat(e.target.value); saveSettings(); });
-        s.stereo.addEventListener('input', (e) => { stereoWidth = parseFloat(e.target.value); saveSettings(); });
-        s.waveHeight.addEventListener('input', (e) => { waveHeight = parseFloat(e.target.value); saveSettings(); });
-        s.waveWidth.addEventListener('input', (e) => { waveWidth = parseFloat(e.target.value); saveSettings(); });
-        [s.mistVol, s.dropVol, s.birdVol, s.mistCount, s.dropCount, s.birdCount, inH, inM].forEach(el => el.addEventListener('input', () => { updateVolumes(); saveSettings(); }));
-        [mistEnable, dropEnable, birdEnable].forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); updateVolumes(); saveSettings(); }));
-        s.reverb.addEventListener('input', (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); saveSettings(); });
-
+        // --- キャンバス・描画 ---
         function resize() {
-            const dpr = window.devicePixelRatio || 1;
-            const w = window.innerWidth, h = window.innerHeight;
-            canvas.width = Math.ceil(w * dpr);
-            canvas.height = Math.ceil(h * dpr);
+            const dpr = window.devicePixelRatio || 1, w = window.innerWidth, h = window.innerHeight;
+            canvas.width = Math.ceil(w * dpr); canvas.height = Math.ceil(h * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             if (!tempCanvas) tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
@@ -250,15 +211,35 @@
             btnCanvas.width = Math.ceil(76 * dpr); btnCanvas.height = Math.ceil(76 * dpr);
             btnCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
-        window.addEventListener('resize', resize);
-        window.addEventListener('orientationchange', () => { setTimeout(resize, 100); });
-        
+        window.onresize = resize;
+        window.onorientationchange = () => setTimeout(resize, 100);
+
+        function drawButtonVisual() {
+            btnCtx.clearRect(0, 0, 76, 76);
+            const cx = 76/2, cy = 76/2, baseRadius = 28;
+            btnCtx.beginPath(); btnCtx.fillStyle = '#000';
+            if (!isPlaying || !analyser) { btnCtx.arc(cx, cy, baseRadius, 0, Math.PI * 2); btnCtx.fill(); } 
+            else {
+                const data = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(data);
+                const points = 64, slice = Math.floor(data.length / 4 / points); 
+                btnCtx.moveTo(cx, cy - baseRadius);
+                for (let i = 0; i <= points; i++) {
+                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 10); 
+                    btnCtx.lineTo(cx + Math.sin(angle) * r, cy - Math.cos(angle) * r);
+                }
+                for (let i = points; i >= 0; i--) {
+                    const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 10);
+                    btnCtx.lineTo(cx - Math.sin(angle) * r, cy - Math.cos(angle) * r);
+                }
+                btnCtx.closePath(); btnCtx.fill();
+            }
+            requestAnimationFrame(drawButtonVisual);
+        }
+
+        // --- メイン再生処理 ---
         function createReverb() {
             const len = audioCtx.sampleRate * 4, buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
-            for (let c = 0; c < 2; c++) {
-                const d = buf.getChannelData(c);
-                for (let i = 0; i < len; i++) { d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4); }
-            }
+            for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4); }
             const node = audioCtx.createConvolver(); node.buffer = buf; return node;
         }
 
@@ -274,8 +255,7 @@
             osc.type = 'sine'; osc.frequency.setValueAtTime(freq * 2, now); osc.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
             const interval = 3100 - (parseInt(s.dropInterval.value) || 2000), decay = Math.min(1.2, (interval / 1000) + 0.1);
             g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3 / Math.sqrt(count), now + 0.005); g.gain.exponentialRampToValueAtTime(0.001, now + decay);
-            osc.connect(g); g.connect(panner); panner.connect(dropGain);
-            osc.start(now); osc.stop(now + decay + 0.1);
+            osc.connect(g); g.connect(panner); panner.connect(dropGain); osc.start(now); osc.stop(now + decay + 0.1);
             dropTimers[index] = setTimeout(() => playSingleDrop(index), interval * (Math.random() * 0.8 + 0.6));
         }
 
@@ -283,9 +263,11 @@
             if (!isPlaying) return;
             const count = parseInt(s.birdCount.value);
             if (index >= count || !birdEnable.checked) { birdTimers[index] = setTimeout(() => playSingleBird(index, 0), 500); return; }
-            const now = audioCtx.currentTime, birdScale = scale.slice(15), freq = birdScale[Math.floor(Math.random() * birdScale.length)] * (0.98 + Math.random() * 0.04);
+            const now = audioCtx.currentTime, freq = scale.slice(15)[Math.floor(Math.random() * scale.slice(15).length)] * (0.98 + Math.random() * 0.04);
             const osc = audioCtx.createOscillator(), g = audioCtx.createGain(), panner = audioCtx.createStereoPanner();
             panner.pan.setValueAtTime((Math.random() * 2 - 1) * parseFloat(s.birdStereo.value), now);
             osc.type = 'sine'; const sweepTime = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
             osc.frequency.setValueAtTime(freq * (Math.random() > 0.5 ? 1.5 : 0.7), now); osc.frequency.exponentialRampToValueAtTime(freq, now + sweepTime);
-            g.gain.setValueAtTime(0, now); g
+            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.2 / Math.sqrt(count), now + 0.01); g.gain.exponentialRampToValueAtTime(0.001, now + sweepTime + 0.05);
+            osc.connect(g); g.connect(panner); panner.connect(birdGain); osc.start(now); osc.stop(now + sweepTime + 0.1);
+            let nextBurst = (Math.random() > 0.7 && burstCount === 0) ? Math.floor(Math.random() * 3
