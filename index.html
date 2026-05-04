@@ -10,7 +10,6 @@
             background: #fff; font-family: "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; 
         }
         
-        /* 背景Canvas */
         canvas#visualizer { 
             position: fixed; top: 0; left: 0; 
             width: 100vw !important; height: 100vh !important; 
@@ -31,20 +30,21 @@
         /* 再生ボタン: CSSで確実に黒い円を表示 */
         .play-wrapper { 
             position: relative; width: 76px; height: 76px; margin: 10px 0 15px 0; 
-            background: #000; border-radius: 50%; /* 円自体はCSSで描画 */
-            cursor: pointer; display: flex; justify-content: center; align-items: center;
+            background: #000; border-radius: 50%; 
+            display: flex; justify-content: center; align-items: center;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
+        /* 最前面に配置してクリックを確実に拾う */
         button#btn { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             border-radius: 50%; border: none; background: transparent; outline: none; 
-            z-index: 20; cursor: pointer; 
+            z-index: 100; cursor: pointer; 
         }
-        /* 波形Canvasのみを重ねる */
+        /* 描画専用。クリックは透過させる */
         canvas#btnVisualizer { 
             position: absolute; top: 0; left: 0;
             width: 100% !important; height: 100% !important; 
-            z-index: 15; pointer-events: none; 
+            z-index: 50; pointer-events: none; 
         }
         
         details { width: 100%; border-bottom: 1px solid rgba(0,0,0,0.05); padding: 5px 0; }
@@ -209,7 +209,6 @@
             tempCtx = tempCanvas.getContext('2d'); tempCtx.fillStyle = '#fff'; tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             imgData = ctx.createImageData(canvas.width, 1);
             
-            // ボタン用キャンバスは常に76x76ベースでDPRを合わせる
             btnCanvas.width = Math.ceil(76 * dpr); btnCanvas.height = Math.ceil(76 * dpr);
             btnCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
@@ -227,7 +226,7 @@
             const points = 64, slice = Math.floor(data.length / 4 / points);
             
             btnCtx.beginPath();
-            btnCtx.fillStyle = 'rgba(255, 255, 255, 0.9)'; // 黒い背景の上で白く動く波形
+            btnCtx.fillStyle = 'rgba(255, 255, 255, 0.9)'; 
             btnCtx.moveTo(cx, cy - baseRadius);
             for (let i = 0; i <= points; i++) {
                 const angle = (i / points) * Math.PI, v = data[i * slice] / 255, r = baseRadius + (v * 10); 
@@ -260,7 +259,7 @@
             p.pan.setValueAtTime((Math.random()*2-1)*parseFloat(s.dropStereo.value), now);
             osc.type = 'sine'; osc.frequency.setValueAtTime(freq*2, now); osc.frequency.exponentialRampToValueAtTime(freq, now+0.02);
             const interval = 3100 - (parseInt(s.dropInterval.value) || 2000), d = Math.min(1.2, (interval/1000)+0.1);
-            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3/Math.sqrt(count), now+0.005); g.gain.exponentialRampToValueAtTime(0.001, now+d);
+            g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3 / Math.sqrt(count), now + 0.005); g.gain.exponentialRampToValueAtTime(0.001, now+d);
             osc.connect(g); g.connect(p); p.connect(dropGain); osc.start(now); osc.stop(now+d+0.1);
             dropTimers[index] = setTimeout(() => playSingleDrop(index), interval * (Math.random()*0.8+0.6));
         }
@@ -283,4 +282,7 @@
 
         async function togglePlay() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            
+            if (isPlaying) {
+        
