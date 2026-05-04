@@ -27,6 +27,7 @@
         }
         .controls.hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
         
+        /* 再生ボタンエリア (76px) */
         .play-wrapper { position: relative; width: 76px; height: 76px; margin-bottom: 10px; cursor: pointer; }
         button#btn { position: absolute; top: 0; left: 0; width: 76px; height: 76px; border-radius: 50%; border: none; background: transparent; outline: none; z-index: 12; cursor: pointer; }
         canvas#btnVisualizer { position: absolute; top: 0; left: 0; width: 76px; height: 76px; z-index: 11; pointer-events: none; }
@@ -140,7 +141,6 @@
         const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d');
         let tempCanvas, tempCtx, imgData;
 
-        // --- SAVE/LOAD LOGIC ---
         function saveSettings() {
             const data = {
                 inputs: {},
@@ -158,18 +158,18 @@
 
         function loadSettings() {
             const saved = localStorage.getItem('noise_settings');
-            if (!saved) return;
+            if (!saved) { updateLabels(); return; }
             const data = JSON.parse(saved);
             Object.keys(data.inputs).forEach(key => {
                 if (s[key]) s[key].value = data.inputs[key];
             });
             inH.value = data.inputs.timerH || "";
             inM.value = data.inputs.timerM || "";
-            mistEnable.checked = data.checks.mist;
-            dropEnable.checked = data.checks.drop;
-            birdEnable.checked = data.checks.bird;
-            
-            // 変数同期
+            if(data.checks) {
+                mistEnable.checked = data.checks.mist;
+                dropEnable.checked = data.checks.drop;
+                birdEnable.checked = data.checks.bird;
+            }
             baseFilterWeight = parseFloat(s.filter.value);
             stereoWidth = parseFloat(s.stereo.value);
             waveHeight = parseFloat(s.waveHeight.value);
@@ -212,6 +212,7 @@
 
         function stopWithFade() {
             clearInterval(timerInterval);
+            if(!masterGain) { if (isPlaying) btn.click(); return; }
             const now = audioCtx.currentTime;
             masterGain.gain.setTargetAtTime(0, now, 1.0);
             setTimeout(() => { if (isPlaying) btn.click(); }, 3500);
@@ -241,14 +242,24 @@
         s.reverb.addEventListener('input', (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); saveSettings(); });
 
         function resize() {
-            const dpr = window.devicePixelRatio || 1, w = window.innerWidth, h = window.innerHeight;
-            canvas.width = Math.ceil(w * dpr); canvas.height = Math.ceil(h * dpr);
+            const dpr = window.devicePixelRatio || 1;
+            const w = window.innerWidth, h = window.innerHeight;
+            
+            canvas.width = Math.ceil(w * dpr);
+            canvas.height = Math.ceil(h * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
             if (!tempCanvas) tempCanvas = document.createElement('canvas');
-            tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
-            tempCtx = tempCanvas.getContext('2d'); tempCtx.fillStyle = '#fff'; tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx = tempCanvas.getContext('2d');
+            tempCtx.fillStyle = '#fff';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            
             imgData = ctx.createImageData(canvas.width, 1);
-            btnCanvas.width = Math.ceil(76 * dpr); btnCanvas.height = Math.ceil(76 * dpr);
+            
+            btnCanvas.width = Math.ceil(76 * dpr);
+            btnCanvas.height = Math.ceil(76 * dpr);
             btnCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
         window.addEventListener('resize', resize);
@@ -287,5 +298,4 @@
             const now = audioCtx.currentTime, birdScale = scale.slice(15), freq = birdScale[Math.floor(Math.random() * birdScale.length)] * (0.98 + Math.random() * 0.04);
             const osc = audioCtx.createOscillator(), g = audioCtx.createGain(), panner = audioCtx.createStereoPanner();
             panner.pan.setValueAtTime((Math.random() * 2 - 1) * parseFloat(s.birdStereo.value), now);
-            osc.type = 'sine'; const sweepTime = (parseFloat(s.birdPitchSpeed.value) || 0.15) * (0.8 + Math.random() * 0.4);
-            osc.frequency.setValueAtTime(freq * (Math.random() > 0.5 ? 1.5 : 0.7), now); osc.frequency.exponentialRampToValueAtTi
+            osc.type = 'sine';
