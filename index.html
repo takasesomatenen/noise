@@ -285,4 +285,71 @@
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             
             if (isPlaying) {
+                isPlaying = false; dropTimers.forEach(clearTimeout); birdTimers.forEach(clearTimeout); clearInterval(timerInterval); displayTime.innerText = "";
+                const now = audioCtx.currentTime; [mistGain, dropGain, birdGain].forEach(g => g && g.gain.setTargetAtTime(0, now, 0.2));
+                setTimeout(() => { if(scriptNode) scriptNode.disconnect(); if(analyser) analyser.disconnect(); if(masterGain) masterGain.disconnect(); scriptNode = null; lastOutL = 0; lastOutR = 0; }, 1000);
+            } else {
+                lastOutL = 0; lastOutR = 0; phaseA = 0; phaseB = 0; phaseC = 0; isPlaying = true;
+                scriptNode = audioCtx.createScriptProcessor(4096, 0, 2); mistGain = audioCtx.createGain(); dropGain = audioCtx.createGain(); birdGain = audioCtx.createGain(); masterGain = audioCtx.createGain();
+                reverbNode = createReverb(); reverbGain = audioCtx.createGain(); analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
+                const now = audioCtx.currentTime; masterGain.gain.setValueAtTime(1, now);
+                [mistGain, dropGain, birdGain].forEach(g => g.gain.setValueAtTime(0, now));
+                mistGain.gain.linearRampToValueAtTime(mistEnable.checked ? parseFloat(s.mistVol.value) * 0.36 : 0, now + 1.5);
+                dropGain.gain.linearRampToValueAtTime(dropEnable.checked ? parseFloat(s.dropVol.value) : 0, now + 1.5);
+                birdGain.gain.linearRampToValueAtTime(birdEnable.checked ? parseFloat(s.birdVol.value) * 0.6 : 0, now + 1.5);
+                reverbGain.gain.value = parseFloat(s.reverb.value);
+                scriptNode.onaudioprocess = (e) => {
+                    const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1), sampleRate = audioCtx.sampleRate;
+                    const bFreq = 0.85 - (waveWidth * 0.82), incA = (2*Math.PI*bFreq)/sampleRate, incB = (2*Math.PI*bFreq*0.73)/sampleRate, incC = (2*Math.PI*bFreq*1.41)/sampleRate, numM = parseInt(s.mistCount.value);
+                    for (let i = 0; i < outL.length; i++) {
+                        phaseA += incA; phaseB += incB; phaseC += incC; const mod = ((Math.sin(phaseA) + 0.5 * Math.sin(phaseB) + 0.3 * Math.sin(phaseC)) / 1.8) * (waveHeight * 0.25), curF = Math.max(0.01, Math.min(0.99, baseFilterWeight + mod));
+                        let combinedL = 0, combinedR = 0; for(let n=0; n<numM; n++) { const wL = Math.random()*2-1, wR = Math.random()*2-1; combinedL += wL; combinedR += (wR * stereoWidth) + (wL * (1-stereoWidth)); }
+                        combinedL /= Math.sqrt(numM); combinedR /= Math.sqrt(numM);
+                        let nextL = (lastOutL * curF) + (combinedL * (1-curF)), nextR = (lastOutR * curF) + (combinedR * (1-curF));
+                        if (isNaN(nextL)) nextL = 0; if (isNaN(nextR)) nextR = 0; outL[i] = nextL; outR[i] = nextR; lastOutL = nextL; lastOutR = nextR;
+                    }
+                };
+                scriptNode.connect(mistGain); mistGain.connect(analyser); dropGain.connect(analyser); dropGain.connect(reverbNode); birdGain.connect(analyser); birdGain.connect(reverbNode); reverbNode.connect(reverbGain); reverbGain.connect(analyser); analyser.connect(masterGain); masterGain.connect(audioCtx.destination);
+                const draw = () => {
+                    if (!isPlaying) return; requestAnimationFrame(draw); if (!isVisible) return;
+                    const dArray = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(dArray); const maxIdx = Math.floor((24000 / (audioCtx.sampleRate / 2)) * dArray.length);
+                    tempCtx.drawImage(canvas, 0, 1); for (let i = 0; i < canvas.width; i++) { const val = dArray[Math.floor((i / canvas.width) * maxIdx)], gray = 255 - val, p = i * 4; imgData.data[p] = gray; imgData.data[p+1] = gray; imgData.data[p+2] = gray; imgData.data[p+3] = 255; }
+                    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(tempCanvas, 0, 0); ctx.putImageData(imgData, 0, 0); ctx.restore();
+                }
+                draw(); updateVolumes(); startTimer();
+                for(let i=0; i<10; i++) { setTimeout(() => playSingleDrop(i), Math.random() * 2000); setTimeout(() => playSingleBird(i), Math.random() * 2000); }
+            }
+        }
+
+        // --- Interaction ---
+        // 直接ボタンのonclickに紐付け、stopPropagationで背景のトグルを防ぐ
+        btn.onclick = (e) => { 
+            e.stopPropagation(); 
+            togglePlay(); 
+        };
         
+        document.onclick = (e) => {
+            // コントロールパネルの中身、またはボタンそのものを触っている場合はパネルを消さない
+            if (panel.contains(e.target) || e.target === btn) return;
+            // 背景Canvasなどをタップした場合のみトグル
+            panel.classList.toggle('hidden');
+        };
+
+        window.onload = () => { 
+            resize(); 
+            loadSettings(); 
+            drawButtonVisual(); 
+            document.addEventListener('visibilitychange', () => isVisible = (document.visibilityState === 'visible')); 
+        };
+
+        // UI Listeners
+        s.filter.oninput = (e) => { baseFilterWeight = parseFloat(e.target.value); saveSettings(); };
+        s.stereo.oninput = (e) => { stereoWidth = parseFloat(e.target.value); saveSettings(); };
+        s.waveHeight.oninput = (e) => { waveHeight = parseFloat(e.target.value); saveSettings(); };
+        s.waveWidth.oninput = (e) => { waveWidth = parseFloat(e.target.value); saveSettings(); };
+        [s.mistVol, s.dropVol, s.birdVol, s.mistCount, s.dropCount, s.birdCount, inH, inM].forEach(el => el.oninput = () => { if(isPlaying) updateVolumes(); saveSettings(); });
+        [mistEnable, dropEnable, birdEnable].forEach(el => el.onclick = (e) => { e.stopPropagation(); if(isPlaying) updateVolumes(); saveSettings(); });
+        s.reverb.oninput = (e) => { if (reverbGain && isPlaying) reverbGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.05); saveSettings(); };
+    </script>
+</body>
+</html>
